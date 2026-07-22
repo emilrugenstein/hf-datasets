@@ -1,0 +1,15 @@
+# Packages required for this project
+# (trimmed from the old repo's requirements: dropped rapidfuzz/openai — model-matching only)
+numpy
+pandas
+polars
+matplotlib
+seaborn
+pyarrow
+huggingface_hub
+python-dotenv
+ipykernel
+ipywidgets
+requests
+beautifulsoup4
+tqdm

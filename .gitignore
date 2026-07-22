@@ -1,0 +1,13 @@
+# API keys and secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Batch snapshot outputs (per-date min files, regenerable from hf_datasets_snapshot_batch.py)
+data/hf_datasets_historic/

@@ -57,13 +57,10 @@ ORGS_CSV = Path("data/hf_orgs/hf_orgs_scraped_2026-04-30.csv")
 # Currently: analytical core + governance/provenance. Always dropped: `cardData`
 # (only its derived `license` is kept), `sha`, `key`, `description`.
 READ_COLS = [
-    "_id", "id", "author", "createdAt", "lastModified",
-    "likes", "downloads", "downloadsAllTime", "trendingScore",
-    "tags", "mainSize",
-    "gated", "private", "disabled", "paperswithcode_id", "citation",
-    "cardData",
+    "_id", "id", "author", "createdAt", "tags",
+    "likes", "downloads", "downloadsAllTime", "trendingScore"
 ]
-KEEP_COLS = [c for c in READ_COLS if c != "cardData"] + ["license", "org_type"]
+KEEP_COLS = [c for c in READ_COLS if c != "cardData"] + ["org_type"]
 
 SNAPSHOT_RE = re.compile(r"^datasets/(\d{4}-\d{2}-\d{2})/datasets\.parquet$")
 
@@ -165,8 +162,8 @@ def process_snapshot(date_str: str, orgs: pd.DataFrame, *, force: bool) -> str:
         df = _read_with_schema_fallback(cache_path, date_str)
 
         # No activity filter — deliberate, see module docstring.
-        df["license"] = df["cardData"].apply(extract_license)
-        df = df.drop(columns=["cardData"])
+        # df["license"] = df["cardData"].apply(extract_license)
+        # df = df.drop(columns=["cardData"])
         df = df.merge(orgs, left_on="author", right_on="org_slug", how="left")
         df = df[KEEP_COLS]
 

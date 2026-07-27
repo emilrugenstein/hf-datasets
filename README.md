@@ -27,21 +27,37 @@ Per-column compressed sizes in the latest snapshot (377 MB total): `cardData` 20
 
 ## Pipeline
 
-1. `hf_datasets_snapshot_batch.py` — downloads each weekly snapshot, extracts
-   `license` from `cardData`, merges `org_type` from the orgs scrape, writes slim
+1. `hf_datasets_snapshot_batch.py` — downloads each weekly snapshot, merges
+   `org_type` from the orgs scrape, writes slim
    `data/hf_datasets_historic/hf_datasets_min_<date>.parquet` files (gitignored,
-   regenerable). Start with `--smoke-test`.
+   regenerable). License is NOT a separate column — derive it from `license:*`
+   entries in `tags` at analysis time. Start with `--smoke-test`.
 2. `hf_datasets_explore.ipynb` — tinkering notebook; loads selected columns of the
    latest snapshot remotely (footer/column reads, no full download).
 3. `hf_org_scrapper.py` + `data/hf_orgs/hf_orgs_scraped_2026-04-30.csv` — copied
    unchanged from the old project (see caveat in LEGACY_PATTERNS.md).
+4. `hf_datasets_build_viewer.py` — builds the interactive trend viewer
+   `viewer/hf_datasets_viewer.html` (gitignored, ~9 MB, self-contained — just
+   double-click it). Aggregates all weekly min files: hub totals, per-topic trends
+   (`task_categories` + top-60 free-form tags), and full weekly series for every
+   dataset that was ever in a weekly top-1000 by any ranking (~10k). The UI
+   (`viewer/template.html`) filters by min value, top 100/1000, topics, and papers
+   attached (`arxiv:` tags), switchable between four metrics: 30-day downloads,
+   all-time downloads, all-time growth (downloads gained since 2025-02-26), and
+   likes. Re-run after new snapshots; `--quick 8` for fast iteration.
+5. `hf_datasets_historic_trends.ipynb` — static thesis-style trend figures, ported
+   from the capstone's `hf_main_historic_trends.ipynb` (models): downloads/likes/
+   counts/newly-added by org type, top-N concentration, spike attribution,
+   single-dataset history, and license trends. Licenses are derived from
+   `license:*` entries in `tags`, so license trends cover the full 104 weeks
+   (unlike models, where license only existed from 2025-02-26).
 
-## ⚠ Open decisions (deliberately deferred)
+## ⚠ Open decisions
 
-- **Which columns the slim files keep.** The list in `hf_datasets_snapshot_batch.py`
-  (`READ_COLS`/`KEEP_COLS`) is **provisional** (analytical core + governance fields).
-  Plan: tinker with the latest snapshot in the explore notebook first, then fix the
-  column set — **before** running the full 104-week batch.
+- **Columns: DECIDED** (`_id, id, author, createdAt, tags, likes, downloads,
+  downloadsAllTime, trendingScore` + `org_type`); the full 104-week batch has run.
+  Changing the set later means re-downloading all snapshots (raws are deleted
+  after processing).
 - **Paper references:** `paperswithcode_id` is NOT the only carrier — papers also
   appear as `arxiv:XXXX.XXXXX` entries inside `tags`, and `citation` holds free-text
   BibTeX. Coverage of the three was not yet quantified; check while tinkering.

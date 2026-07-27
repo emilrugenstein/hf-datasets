@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HF Datasets — weekly trends</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --up: #006300;
+  --down: #d03b3b;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wrap { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+h1 { font-size: 22px; margin: 0 0 2px; }
+h2 { font-size: 16px; margin: 0 0 4px; }
+.sub, .caption { color: var(--ink-2); font-size: 13px; margin: 0; }
+.caption { margin-top: 2px; }
+.note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 18px; margin-top: 16px;
+}
+/* ---- filter row ---- */
+.filters {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: flex-end;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 18px; margin-top: 16px;
+  box-shadow: 0 2px 8px rgba(11,11,11,0.04);
+}
+.fgroup > label:first-child, .fgroup > .flabel {
+  display: block; font-size: 11px; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 4px;
+}
+.seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 7px; overflow: hidden; }
+.seg button {
+  border: 0; background: transparent; color: var(--ink-2);
+  padding: 5px 11px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--grid); }
+.seg button.on { background: var(--ink); color: #fff; }
+select, input[type=number], input[type=search], input[type=text] {
+  font: inherit; font-size: 13px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--axis);
+  border-radius: 7px; padding: 5px 8px;
+}
+input[type=number] { width: 110px; }
+.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); padding: 5px 0; cursor: pointer; }
+/* dropdown-with-checkboxes */
+.dd { position: relative; }
+.dd > summary {
+  list-style: none; cursor: pointer; font-size: 13px; color: var(--ink-2);
+  border: 1px solid var(--axis); border-radius: 7px; padding: 5px 10px; background: var(--surface);
+  user-select: none; white-space: nowrap;
+}
+.dd > summary::-webkit-details-marker { display: none; }
+.dd[open] > summary { border-color: var(--ink-2); }
+.dd .panel {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 30;
+  width: 290px; max-height: 320px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(11,11,11,0.12); padding: 8px;
+}
+.dd .panel input[type=search] { width: 100%; margin-bottom: 6px; }
+.dd .panel label { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 5px; font-size: 13px; cursor: pointer; }
+.dd .panel label:hover { background: var(--page); }
+.dd .panel .cnt { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.dd .panel .kind { color: var(--muted); font-size: 11px; }
+.dd .panel button.linky { border: 0; background: none; color: var(--s1); font-size: 12px; cursor: pointer; padding: 2px 4px; }
+/* ---- stat tiles ---- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 12px 0 4px; }
+.tile { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; background: var(--surface); }
+.tile .tlabel { font-size: 12px; color: var(--ink-2); }
+.tile .tvalue { font-size: 26px; font-weight: 650; margin: 2px 0; }
+.tile .tdelta { font-size: 12px; color: var(--muted); }
+.tile .tdelta .up { color: var(--up); font-weight: 600; }
+.tile .tdelta .down { color: var(--down); font-weight: 600; }
+/* ---- charts ---- */
+.smallmult { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.chartbox { min-width: 0; }
+.chartbox h3 { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 0 0 2px; }
+.chart svg { display: block; width: 100%; }
+.chart { position: relative; }
+#tooltip {
+  position: fixed; z-index: 100; pointer-events: none; display: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(11,11,11,0.15); padding: 8px 10px; font-size: 12px;
+  max-width: 340px;
+}
+#tooltip .tt-date { font-weight: 600; margin-bottom: 4px; }
+#tooltip .tt-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+#tooltip .tt-row .chip { flex: none; }
+#tooltip .tt-row .nm { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+#tooltip .tt-row .vl { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+/* ---- legends ---- */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; }
+.legend .lg {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2);
+  border: 1px solid var(--border); border-radius: 14px; padding: 2px 10px; cursor: pointer; background: var(--surface);
+}
+.legend .lg .x { color: var(--muted); font-weight: 600; margin-left: 2px; }
+.legend .lg:hover { border-color: var(--ink-2); }
+/* ---- tables / lists ---- */
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--grid); }
+th { color: var(--ink-2); font-weight: 600; font-size: 12px; white-space: nowrap; cursor: pointer; user-select: none; }
+th.nosort { cursor: default; }
+th .arrow { color: var(--muted); font-size: 10px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td a { color: var(--s1); text-decoration: none; }
+td a:hover { text-decoration: underline; }
+.tagpill { display: inline-block; background: var(--page); border: 1px solid var(--grid); border-radius: 9px; padding: 0 7px; font-size: 11px; color: var(--ink-2); margin: 1px 2px 1px 0; white-space: nowrap; }
+.toplist { max-height: 340px; overflow-y: auto; margin-top: 10px; border: 1px solid var(--grid); border-radius: 8px; }
+.toplist table { font-size: 12.5px; }
+.toplist tr { cursor: pointer; }
+.toplist tr:hover { background: var(--page); }
+.toplist tr.pinned { background: #eef4fc; }
+.searchrow { display: flex; gap: 10px; align-items: center; margin: 8px 0 2px; position: relative; }
+#searchResults {
+  position: absolute; top: calc(100% + 2px); left: 0; z-index: 30; width: 360px; max-height: 260px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(11,11,11,0.12); display: none;
+}
+#searchResults div { padding: 5px 10px; cursor: pointer; font-size: 13px; }
+#searchResults div:hover { background: var(--page); }
+#searchResults .meta { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.rowflex { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.subseg { margin-top: 4px; }
+footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header style="margin-top:8px">
+  <h1>Hugging Face datasets — weekly trends</h1>
+  <p class="sub">Weekly snapshots of the HF hub (<span id="hdrRange"></span> · <span id="hdrWeeks"></span> weeks · built <span id="hdrBuilt"></span>).
+  Hub &amp; topic charts aggregate the <em>full hub</em>; the dataset chart and paper table cover the embedded top-1000 pool.</p>
+</header>
+
+<div class="filters">
+  <div class="fgroup"><span class="flabel">Metric</span><div class="seg" id="segMetric"></div></div>
+  <div class="fgroup"><span class="flabel">Rank week</span><select id="selWeek"></select></div>
+  <div class="fgroup"><span class="flabel">Show</span><div class="seg" id="segTopN"></div></div>
+  <div class="fgroup"><span class="flabel" id="minLabel">Min downloads</span><input id="inpMin" type="number" min="0" step="1000" value="0" title="Threshold on the selected metric at the rank week"></div>
+  <div class="fgroup"><span class="flabel">Papers</span><label class="chk"><input type="checkbox" id="chkPapers"> with arXiv paper only</label></div>
+  <div class="fgroup"><span class="flabel">Topic filter</span><details class="dd" id="ddTopics"><summary id="ddTopicsSummary">All topics</summary><div class="panel" id="ddTopicsPanel"></div></details></div>
+  <div class="fgroup"><span class="flabel">Scale</span><div class="seg" id="segScale"></div></div>
+</div>
+<p class="note" id="alltimeNote" style="display:none">All-time downloads are tracked from <span id="alltimeDate"></span> — earlier weeks are outside the chart domain.</p>
+
+<section class="card" id="secOverview">
+  <h2>Hub overview</h2>
+  <p class="caption">All datasets on the hub, at the selected rank week (deltas vs 4 weeks earlier).</p>
+  <div class="tiles" id="tiles"></div>
+  <div class="smallmult" id="hubCharts"></div>
+</section>
+
+<section class="card" id="secTopics">
+  <div class="rowflex">
+    <div><h2>Topic trends</h2><p class="caption">Topics = <code>task_categories</code> tags + top free-form community tags. Full-hub aggregates.</p></div>
+    <div style="display:flex; gap:10px; align-items:center">
+      <div class="seg subseg" id="segTopicMode"></div>
+      <details class="dd" id="ddTopicPick"><summary id="ddTopicPickSummary">Topics: auto (top 8)</summary><div class="panel" id="ddTopicPickPanel"></div></details>
+    </div>
+  </div>
+  <div class="chart chartbox" id="topicChart"></div>
+  <div class="legend" id="topicLegend"></div>
+</section>
+
+<section class="card" id="secDatasets">
+  <div class="rowflex">
+    <div><h2 id="dsTitle">Top datasets</h2><p class="caption" id="dsCaption"></p></div>
+  </div>
+  <div class="searchrow">
+    <input type="search" id="inpSearch" placeholder="Search dataset id to pin…" style="width:360px" autocomplete="off">
+    <span class="note" id="pinHint">Click a line or a row below to pin a dataset.</span>
+    <div id="searchResults"></div>
+  </div>
+  <div class="chart chartbox" id="dsChart"></div>
+  <div class="legend" id="dsLegend"></div>
+  <div class="toplist" id="dsList"></div>
+</section>
+
+<section class="card" id="secPapers">
+  <h2>Datasets with arXiv papers</h2>
+  <p class="caption" id="paperCaption"></p>
+  <div class="smallmult" id="paperCharts"></div>
+  <div style="overflow-x:auto; margin-top:14px">
+    <table id="paperTable"></table>
+  </div>
+  <p class="note" id="paperTableNote"></p>
+</section>
+
+<footer>Data: <a href="https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots" style="color:var(--s1)">hfmlsoc/hub_weekly_snapshots</a> · downloads = ~30-day rolling window · all-time downloads tracked from <span id="ftAlltime"></span>.</footer>
+
+</div>
+<div id="tooltip"></div>
+
+<script>
+"use strict";
+const DATA=/*__DATA__*/;
+
+/* ---------- decode & constants ---------- */
+const W = DATA.dates.length, LAST = W - 1, AT0 = DATA.alltime_start;
+const PALETTE = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#4a3aa7','#e34948'];
+const GRAY = '#b9b8b1';
+const dsets = DATA.datasets.map(t => ({
+  id: t[0], idLow: t[0].toLowerCase(), org: DATA.org_types[t[1]], created: t[2],
+  topics: t[3], arxiv: t[4], dlStart: t[5], dl: t[6], dlatStart: t[7], dlat: t[8], lkStart: t[9], lk: t[10],
+}));
+const byId = new Map(dsets.map(d => [d.id, d]));
+
+/* metric registry: 'growth' = change of all-time downloads since the dataset's
+   first tracked value (its whole lifetime on the metric, so it starts at 0) */
+const METRICS = {
+  dl:     { btn: '30-day downloads', name: 'downloads (30d)',                                xClip: 0 },
+  dlat:   { btn: 'all-time',         name: 'downloads (all-time)',                           xClip: AT0 },
+  growth: { btn: 'all-time growth',  name: 'downloads gained since ' + (DATA.dates[AT0] || ''), xClip: AT0 },
+  lk:     { btn: 'likes',            name: 'likes',                                          xClip: 0 },
+};
+
+function rawAt(d, w, key) {
+  const a = d[key], i = w - d[key + 'Start'];
+  return (i >= 0 && i < a.length) ? a[i] : null;
+}
+function valueAt(d, w, m) {
+  if (m === 'growth') { const v = rawAt(d, w, 'dlat'); return v == null ? null : v - (d.dlat[0] ?? 0); }
+  return rawAt(d, w, m);
+}
+function ptsOf(d, m, xStart) {
+  const key = m === 'growth' ? 'dlat' : m;
+  const s = d[key + 'Start'], a = d[key], base = m === 'growth' ? (a[0] ?? 0) : 0, pts = [];
+  for (let i = 0; i < a.length; i++) {
+    const w = s + i;
+    if (w >= xStart && a[i] != null) pts.push([w, a[i] - base]);
+  }
+  return pts;
+}
+/* hub totals under the current metric (growth = hub all-time minus its value at AT0) */
+function hubAt(w) {
+  const H = DATA.hub, m = state.metric;
+  if (m === 'growth') { const b = H.dlat[AT0]; return (H.dlat[w] == null || b == null) ? null : H.dlat[w] - b; }
+  return H[m][w];
+}
+function hubPaperAt(w) {
+  const H = DATA.hub, m = state.metric;
+  if (m === 'growth') { const b = H.dlat_paper[AT0]; return (H.dlat_paper[w] == null || b == null) ? null : H.dlat_paper[w] - b; }
+  return H[m + '_paper'][w];
+}
+
+/* ---------- state ---------- */
+const state = {
+  metric: 'dl',          // 'dl' | 'dlat'
+  rankWeek: LAST,
+  topN: 1000,            // 100 | 1000 | 0 (= all embedded)
+  minDl: 0,
+  papersOnly: false,
+  topicSel: new Set(),   // topic indices filtering the dataset pool
+  scale: 'linear',       // 'linear' | 'symlog'
+  pinned: [],            // dataset ids, in pin order
+  topicMode: 'dl',       // topic chart: 'dl' (downloads) | 'n' (dataset count)
+  topicPick: null,       // null = auto top-8, else Set of topic indices
+  paperSort: { key: 'value', dir: -1 },
+};
+const dsColors = new Map();     // dataset id -> palette slot
+const topicColors = new Map();  // topic idx  -> palette slot
+
+/* ---------- tiny DOM helper ---------- */
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, ...kids) {
+  const n = tag.startsWith('svg:') ? document.createElementNS(SVGNS, tag.slice(4)) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (v != null) n.setAttribute(k, v);
+  }
+  for (const k of kids.flat(2)) if (k != null) n.append(k.nodeType ? k : String(k));
+  return n;
+}
+const $ = id => document.getElementById(id);
+
+/* ---------- formatting ---------- */
+function fmt(v) {
+  if (v == null) return '–';
+  const a = Math.abs(v);
+  if (a >= 1e9) return trim1(v / 1e9) + 'B';
+  if (a >= 1e6) return trim1(v / 1e6) + 'M';
+  if (a >= 1e3) return trim1(v / 1e3) + 'K';
+  return String(Math.round(v));
+}
+function trim1(x) { return (Math.abs(x) >= 100 ? Math.round(x) : Math.round(x * 10) / 10).toString(); }
+function fmtPct(x) { return x == null ? '–' : (x * 100).toFixed(x < 0.1 ? 2 : 1) + '%'; }
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDate(ds) { return MONTHS[+ds.slice(5, 7) - 1] + " '" + ds.slice(2, 4); }
+
+/* ---------- scales ---------- */
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+}
+function makeScale(kind, max, h) {
+  if (kind === 'symlog') {
+    const sl = v => Math.log10(1 + Math.max(0, v));
+    const top = sl(max) || 1;
+    const ticks = [0];
+    for (let k = 0; ; k++) { const t = Math.pow(10, k); if (t > max) break; ticks.push(t); }
+    while (ticks.length > 7) for (let i = ticks.length - 2; i > 0; i -= 2) ticks.splice(i, 1);
+    return { y: v => h - (sl(v) / top) * h, ticks };
+  }
+  const m = niceMax(max), step = m / 4;
+  return { y: v => h - (v / m) * h, ticks: [0, step, 2 * step, 3 * step, m] };
+}
+
+/* ---------- tooltip ---------- */
+const tooltip = $('tooltip');
+function showTooltip(x, y, dateStr, rows) {
+  tooltip.replaceChildren(el('div', { class: 'tt-date' }, dateStr),
+    ...rows.map(r => el('div', { class: 'tt-row' },
+      el('span', { class: 'chip', style: `background:${r.color}` }),
+      el('span', { class: 'nm' }, r.name),
+      el('span', { class: 'vl' }, r.value))));
+  tooltip.style.display = 'block';
+  const bw = tooltip.offsetWidth, bh = tooltip.offsetHeight;
+  tooltip.style.left = Math.min(x + 14, innerWidth - bw - 8) + 'px';
+  tooltip.style.top = Math.min(y + 14, innerHeight - bh - 8) + 'px';
+}
+function hideTooltip() { tooltip.style.display = 'none'; }
+
+/* ---------- line chart ----------
+   series: [{name, color, pts:[[week,value]...], width?, dim?}]
+   opts: {xStart, height, yKind, yFmt, rankMark?, onPick?(name)} */
+function renderChart(container, series, opts) {
+  container.replaceChildren();
+  const cw = container.clientWidth || 600;
+  const H = opts.height || 260, ML = 46, MR = 14, MT = 10, MB = 24;
+  const iw = cw - ML - MR, ih = H - MT - MB;
+  const x0 = opts.xStart || 0, span = Math.max(1, LAST - x0);
+  const X = w => ML + ((w - x0) / span) * iw;
+  let max = 0;
+  for (const s of series) for (const [, v] of s.pts) if (v > max) max = v;
+  const sc = makeScale(opts.yKind || 'linear', max, ih);
+  const Y = v => MT + sc.y(v);
+  const svg = el('svg:svg', { viewBox: `0 0 ${cw} ${H}`, width: cw, height: H });
+
+  for (const t of sc.ticks) {
+    svg.append(el('svg:line', { x1: ML, x2: cw - MR, y1: Y(t), y2: Y(t), stroke: 'var(--grid)', 'stroke-width': 1 }));
+    svg.append(el('svg:text', { x: ML - 6, y: Y(t) + 3.5, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--muted)' },
+      opts.yFmt ? opts.yFmt(t) : fmt(t)));
+  }
+  const nx = Math.min(6, span + 1);
+  for (let i = 0; i < nx; i++) {
+    const w = Math.round(x0 + (span * i) / (nx - 1 || 1));
+    svg.append(el('svg:text', { x: X(w), y: H - 7, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--muted)' }, fmtDate(DATA.dates[w])));
+  }
+  svg.append(el('svg:line', { x1: ML, x2: cw - MR, y1: Y(0), y2: Y(0), stroke: 'var(--axis)', 'stroke-width': 1 }));
+  if (opts.rankMark != null && opts.rankMark >= x0)
+    svg.append(el('svg:line', { x1: X(opts.rankMark), x2: X(opts.rankMark), y1: MT, y2: MT + ih, stroke: 'var(--axis)', 'stroke-dasharray': '3 3' }));
+
+  const ordered = [...series.filter(s => s.dim), ...series.filter(s => !s.dim)];
+  for (const s of ordered) {
+    let dPath = '', prevW = null;
+    for (const [w, v] of s.pts) {
+      dPath += (prevW != null && w === prevW + 1 ? 'L' : 'M') + X(w).toFixed(1) + ' ' + Y(v).toFixed(1);
+      prevW = w;
+    }
+    if (!dPath) continue;
+    s._path = el('svg:path', { d: dPath, fill: 'none', stroke: s.color, 'stroke-width': s.width || 2, 'stroke-linejoin': 'round', opacity: s.dim ? 0.55 : 1 });
+    svg.append(s._path);
+    if (!s.dim && s.pts.length) {
+      const [lw, lv] = s.pts[s.pts.length - 1];
+      svg.append(el('svg:circle', { cx: X(lw), cy: Y(lv), r: 3.5, fill: s.color, stroke: 'var(--surface)', 'stroke-width': 2 }));
+    }
+  }
+  const colored = series.filter(s => !s.dim && s.pts.length);
+  if (colored.length >= 2 && colored.length <= 4) {
+    const lbl = colored.map(s => ({ s, y: Y(s.pts[s.pts.length - 1][1]) })).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < lbl.length; i++) if (lbl[i].y - lbl[i - 1].y < 13) lbl[i].y = lbl[i - 1].y + 13;
+    for (const { s, y } of lbl)
+      svg.append(el('svg:text', { x: cw - MR - 2, y: Math.min(y + 4, H - MB - 2), 'text-anchor': 'end', 'font-size': 11, fill: 'var(--ink-2)' },
+        s.name.length > 24 ? s.name.slice(0, 23) + '…' : s.name));
+  }
+
+  const cross = el('svg:line', { y1: MT, y2: MT + ih, stroke: 'var(--axis)', 'stroke-width': 1, visibility: 'hidden' });
+  svg.append(cross);
+  const overlay = el('svg:rect', { x: ML, y: MT, width: iw, height: ih, fill: 'transparent', style: 'cursor:crosshair' });
+  svg.append(overlay);
+
+  function weekAt(evt) {
+    const r = svg.getBoundingClientRect();
+    const px = (evt.clientX - r.left) * (cw / r.width);
+    return Math.max(x0, Math.min(LAST, Math.round(x0 + ((px - ML) / iw) * span)));
+  }
+  overlay.addEventListener('mousemove', evt => {
+    const w = weekAt(evt);
+    cross.setAttribute('x1', X(w)); cross.setAttribute('x2', X(w));
+    cross.setAttribute('visibility', 'visible');
+    const rows = [];
+    for (const s of series) {
+      const p = s.pts.find(p2 => p2[0] === w);
+      if (p) rows.push({ name: s.name, color: s.color, v: p[1], value: opts.yFmt ? opts.yFmt(p[1]) : fmt(p[1]) });
+    }
+    rows.sort((a, b) => b.v - a.v);
+    const shown = rows.slice(0, 10);
+    if (rows.length > 10) shown.push({ name: `… +${rows.length - 10} more`, color: 'transparent', value: '' });
+    showTooltip(evt.clientX, evt.clientY, DATA.dates[w], shown);
+  });
+  overlay.addEventListener('mouseleave', () => { cross.setAttribute('visibility', 'hidden'); hideTooltip(); });
+  if (opts.onPick) overlay.addEventListener('click', evt => {
+    const w = weekAt(evt);
+    const r = svg.getBoundingClientRect();
+    const py = (evt.clientY - r.top) * (H / r.height);
+    let best = null, bd = 26;
+    for (const s of series) {
+      const p = s.pts.find(p2 => p2[0] === w);
+      if (!p) continue;
+      const d = Math.abs(Y(p[1]) - py);
+      if (d < bd) { bd = d; best = s.name; }
+    }
+    if (best) opts.onPick(best);
+  });
+  container.append(svg);
+}
+
+/* ---------- color slots (color follows entity) ---------- */
+function assignColors(map, wanted) {
+  for (const k of [...map.keys()]) if (!wanted.includes(k)) map.delete(k);
+  const used = new Set(map.values());
+  for (const k of wanted) {
+    if (map.has(k)) continue;
+    for (let s = 0; s < PALETTE.length; s++) if (!used.has(s)) { map.set(k, s); used.add(s); break; }
+  }
+  return map;
+}
+
+/* ---------- filtering pipeline ---------- */
+function filteredDatasets() {
+  const m = state.metric, rw = state.rankWeek, out = [];
+  for (const d of dsets) {
+    if (state.papersOnly && !d.arxiv.length) continue;
+    if (state.topicSel.size && !d.topics.some(t => state.topicSel.has(t))) continue;
+    const v = valueAt(d, rw, m);
+    if (v == null || v < state.minDl) continue;
+    out.push([v, d]);
+  }
+  out.sort((a, b) => b[0] - a[0]);
+  return state.topN ? out.slice(0, state.topN) : out;
+}
+
+/* ---------- overview section ---------- */
+function renderOverview() {
+  const rw = state.rankWeek, m = state.metric, prev = rw - 4;
+  const H = DATA.hub;
+  const share = w => { const t = hubAt(w), p = hubPaperAt(w); return (p != null && t) ? p / t : null; };
+  const tileLabel = m === 'dl' ? 'Total downloads (30d)' : m === 'dlat' ? 'Total downloads (all-time)'
+    : m === 'growth' ? 'Downloads gained since ' + DATA.dates[AT0] : 'Total likes';
+  const tiles = [
+    { label: 'Datasets on hub', v: H.n[rw], p: H.n[prev], f: fmt },
+    { label: tileLabel, v: hubAt(rw), p: prev >= 0 ? hubAt(prev) : null, f: fmt },
+    { label: 'Datasets with arXiv paper', v: H.n_paper[rw], p: H.n_paper[prev], f: fmt },
+    { label: 'arXiv-paper share of ' + (m === 'lk' ? 'likes' : 'downloads'), v: share(rw), p: prev >= 0 ? share(prev) : null, f: fmtPct },
+  ];
+  $('tiles').replaceChildren(...tiles.map(t => {
+    let delta = null;
+    if (t.v != null && t.p != null && t.p !== 0) delta = (t.v - t.p) / t.p;
+    return el('div', { class: 'tile' },
+      el('div', { class: 'tlabel' }, t.label),
+      el('div', { class: 'tvalue' }, t.f(t.v)),
+      el('div', { class: 'tdelta' }, delta == null ? ' ' :
+        el('span', { class: delta >= 0 ? 'up' : 'down' }, (delta >= 0 ? '▲ +' : '▼ ') + (delta * 100).toFixed(1) + '%'),
+        delta == null ? '' : ' vs 4 wks earlier'));
+  }));
+
+  const xm = METRICS[m].xClip;
+  const box = (title, pts, yKind, yFmt, xStart) => {
+    const c = el('div', { class: 'chartbox' }, el('h3', {}, title));
+    const ch = el('div', { class: 'chart' });
+    c.append(ch); return { c, ch, pts, yKind, yFmt, xStart, title };
+  };
+  const totalPts = [], sharePts = [];
+  for (let w = xm; w < W; w++) {
+    const t = hubAt(w); if (t != null) totalPts.push([w, t]);
+    const s = share(w); if (s != null) sharePts.push([w, s * 1000]);
+  }
+  const b1 = box('Datasets on hub', H.n.map((v, w) => [w, v]).filter(p => p[1] != null), 'linear', fmt, 0);
+  const b2 = box(tileLabel, totalPts, 'linear', fmt, xm);
+  const b3 = box('arXiv-paper share of ' + (m === 'lk' ? 'likes' : 'downloads'), sharePts, 'linear', v => fmtPct(v / 1000), xm);
+  $('hubCharts').replaceChildren(b1.c, b2.c, b3.c);
+  for (const b of [b1, b2, b3])
+    renderChart(b.ch, [{ name: b.title, color: PALETTE[0], pts: b.pts }], { xStart: b.xStart, height: 150, yKind: b.yKind, yFmt: b.yFmt, rankMark: rw });
+}
+
+/* ---------- topic section ---------- */
+function topicValues(t) {
+  if (state.topicMode === 'n') return t.n;
+  const m = state.metric;
+  if (m === 'growth') {
+    if (!t._growth) {
+      const base = t.dlat.find(v => v != null) ?? 0;
+      t._growth = t.dlat.map(v => v == null ? null : v - base);
+    }
+    return t._growth;
+  }
+  return t[m];
+}
+function topicValueAt(t, w) { const a = topicValues(t); return a ? a[w] : null; }
+
+function renderTopicSection() {
+  const rw = state.rankWeek, xm = state.topicMode !== 'n' ? METRICS[state.metric].xClip : 0;
+  const ranked = DATA.topics.map((t, i) => [topicValueAt(t, rw) ?? 0, i]).sort((a, b) => b[0] - a[0]);
+  const picked = state.topicPick ? [...state.topicPick] : ranked.slice(0, 8).map(r => r[1]);
+  assignColors(topicColors, picked);
+  const series = picked.map(i => {
+    const t = DATA.topics[i];
+    const pts = (topicValues(t) || []).map((v, w) => [w, v]).filter(p => p[1] != null && p[0] >= xm);
+    return { name: t.name, color: PALETTE[topicColors.get(i)], pts };
+  });
+  renderChart($('topicChart'), series, {
+    xStart: xm, height: 280, yKind: state.scale, yFmt: fmt, rankMark: rw,
+    onPick: null,
+  });
+  $('topicLegend').replaceChildren(...picked.map(i => el('span', { class: 'lg', onclick: () => toggleTopicPick(i) },
+    el('span', { class: 'chip', style: `background:${PALETTE[topicColors.get(i)]}` }), DATA.topics[i].name,
+    state.topicPick ? el('span', { class: 'x' }, '×') : '')));
+  $('ddTopicPickSummary').textContent = state.topicPick ? `Topics: ${state.topicPick.size} selected` : 'Topics: auto (top 8)';
+  renderTopicPickPanel(ranked);
+}
+function toggleTopicPick(i) {
+  if (!state.topicPick) {
+    const rw = state.rankWeek;
+    const auto = DATA.topics.map((t, j) => [topicValueAt(t, rw) ?? 0, j]).sort((a, b) => b[0] - a[0]).slice(0, 8).map(r => r[1]);
+    state.topicPick = new Set(auto);
+  }
+  if (state.topicPick.has(i)) state.topicPick.delete(i);
+  else if (state.topicPick.size < 8) state.topicPick.add(i);
+  renderTopicSection();
+}
+function renderTopicPickPanel(ranked) {
+  const panel = $('ddTopicPickPanel');
+  const q = (panel._q || '').toLowerCase();
+  const reset = el('button', { class: 'linky', onclick: () => { state.topicPick = null; renderTopicSection(); } }, 'reset to auto (top 8)');
+  const search = el('input', { type: 'search', placeholder: 'Filter topics…', value: panel._q || '',
+    oninput: e => { panel._q = e.target.value; renderTopicPickPanel(ranked); } });
+  const cur = state.topicPick;
+  const rows = ranked.filter(([, i]) => !q || DATA.topics[i].name.toLowerCase().includes(q)).map(([v, i]) => {
+    const t = DATA.topics[i], on = cur ? cur.has(i) : false;
+    return el('label', {},
+      el('input', { type: 'checkbox', ...(on ? { checked: '' } : {}), ...(!on && cur && cur.size >= 8 ? { disabled: '' } : {}),
+        onchange: () => toggleTopicPick(i) }),
+      t.name, el('span', { class: 'kind' }, t.kind === 'task' ? '' : '· community'),
+      el('span', { class: 'cnt' }, fmt(v)));
+  });
+  panel.replaceChildren(search, reset, ...rows);
+  if (panel._q && document.activeElement !== search) search.focus();
+}
+
+/* ---------- global topic FILTER dropdown ---------- */
+function renderTopicFilterPanel() {
+  const panel = $('ddTopicsPanel'), rw = state.rankWeek;
+  const q = (panel._q || '').toLowerCase();
+  const ranked = DATA.topics.map((t, i) => [t.n[rw] ?? 0, i]).sort((a, b) => b[0] - a[0]);
+  const search = el('input', { type: 'search', placeholder: 'Filter topics…', value: panel._q || '',
+    oninput: e => { panel._q = e.target.value; renderTopicFilterPanel(); } });
+  const clear = el('button', { class: 'linky', onclick: () => { state.topicSel.clear(); renderAll(); } }, 'clear selection');
+  const rows = ranked.filter(([, i]) => !q || DATA.topics[i].name.toLowerCase().includes(q)).map(([n, i]) => {
+    const t = DATA.topics[i];
+    return el('label', {},
+      el('input', { type: 'checkbox', ...(state.topicSel.has(i) ? { checked: '' } : {}),
+        onchange: e => { e.target.checked ? state.topicSel.add(i) : state.topicSel.delete(i); renderAll(); } }),
+      t.name, el('span', { class: 'kind' }, t.kind === 'task' ? '' : '· community'),
+      el('span', { class: 'cnt' }, fmt(n)));
+  });
+  panel.replaceChildren(search, clear, ...rows);
+  if (panel._q && document.activeElement !== search) search.focus();
+  $('ddTopicsSummary').textContent = state.topicSel.size ? `${state.topicSel.size} topic${state.topicSel.size > 1 ? 's' : ''}` : 'All topics';
+}
+
+/* ---------- datasets section ---------- */
+function renderDatasetsSection() {
+  const filtered = filteredDatasets();
+  const m = state.metric, rw = state.rankWeek, xm = METRICS[m].xClip;
+  const nShow = Math.min(25, filtered.length);
+  const topIds = filtered.slice(0, nShow).map(([, d]) => d.id);
+  const coloredIds = [...state.pinned];
+  for (const id of topIds) { if (coloredIds.length >= 8) break; if (!coloredIds.includes(id)) coloredIds.push(id); }
+  assignColors(dsColors, coloredIds.slice(0, 8));
+
+  const series = [];
+  for (const id of topIds) if (!dsColors.has(id))
+    series.push({ name: id, color: GRAY, pts: ptsOf(byId.get(id), m, xm), width: 1.5, dim: true });
+  for (const [id, slot] of dsColors)
+    if (byId.has(id)) series.push({ name: id, color: PALETTE[slot], pts: ptsOf(byId.get(id), m, xm) });
+
+  renderChart($('dsChart'), series, { xStart: xm, height: 320, yKind: state.scale, yFmt: fmt, rankMark: rw, onPick: togglePin });
+
+  $('dsTitle').textContent = state.topN ? `Top ${state.topN} datasets` : 'All embedded datasets';
+  const parts = [`${filtered.length} datasets ranked by ${METRICS[m].name} at ${DATA.dates[rw]}`];
+  if (state.minDl) parts.push(`min ${fmt(state.minDl)}`);
+  if (state.papersOnly) parts.push('arXiv paper only');
+  if (state.topicSel.size) parts.push(`${state.topicSel.size} topic filter(s)`);
+  parts.push(`chart shows top ${nShow}${state.pinned.length ? ` + ${state.pinned.length} pinned` : ''}`);
+  $('dsCaption').textContent = parts.join(' · ');
+
+  $('dsLegend').replaceChildren(...[...dsColors.keys()].map(id => el('span', { class: 'lg', onclick: () => togglePin(id), title: state.pinned.includes(id) ? 'Unpin' : 'Pin' },
+    el('span', { class: 'chip', style: `background:${PALETTE[dsColors.get(id)]}` }), id,
+    state.pinned.includes(id) ? el('span', { class: 'x' }, '×') : '')));
+
+  const extraLikes = m !== 'lk';  // avoid a duplicate likes column when likes IS the metric
+  const head = el('tr', {}, ...['#', 'dataset', METRICS[m].name, ...(extraLikes ? ['likes'] : []), 'org type', 'topics'].map((h, i) =>
+    el('th', { class: (i === 2 || i === 3 ? 'num ' : '') + 'nosort' }, h)));
+  const rows = filtered.slice(0, nShow).map(([v, d], i) =>
+    el('tr', { class: state.pinned.includes(d.id) ? 'pinned' : '', onclick: () => togglePin(d.id) },
+      el('td', { class: 'num' }, i + 1),
+      el('td', {}, d.id),
+      el('td', { class: 'num' }, fmt(v)),
+      extraLikes ? el('td', { class: 'num' }, fmt(valueAt(d, rw, 'lk'))) : null,
+      el('td', {}, d.org),
+      el('td', {}, d.topics.slice(0, 4).map(t => el('span', { class: 'tagpill' }, DATA.topics[t].name)))));
+  $('dsList').replaceChildren(el('table', {}, el('thead', {}, head), el('tbody', {}, rows)));
+}
+function togglePin(id) {
+  const i = state.pinned.indexOf(id);
+  if (i >= 0) state.pinned.splice(i, 1); else state.pinned.push(id);
+  renderDatasetsSection();
+}
+
+/* ---------- search ---------- */
+function renderSearch() {
+  const q = $('inpSearch').value.trim().toLowerCase(), box = $('searchResults');
+  if (q.length < 2) { box.style.display = 'none'; return; }
+  const hits = [];
+  for (const d of dsets) {
+    if (d.idLow.includes(q)) { hits.push(d); if (hits.length >= 20) break; }
+  }
+  box.replaceChildren(...hits.map(d => el('div', { onclick: () => { togglePin(d.id); $('inpSearch').value = ''; box.style.display = 'none'; } },
+    d.id, el('span', { class: 'meta' }, fmt(valueAt(d, state.rankWeek, state.metric)) + (d.arxiv.length ? ' · arXiv' : '')))));
+  if (!hits.length) box.replaceChildren(el('div', { style: 'color:var(--muted)' }, 'no match in embedded pool'));
+  box.style.display = 'block';
+}
+
+/* ---------- papers section ---------- */
+const paperTrendCache = new Map();  // metric:N -> {cntPts, sharePts} (weekly top-N cohorts)
+function paperTrends(m, N) {
+  const key = m + ':' + N;
+  if (paperTrendCache.has(key)) return paperTrendCache.get(key);
+  const xm = METRICS[m].xClip, cntPts = [], sharePts = [];
+  for (let w = xm; w < W; w++) {
+    const vals = [];
+    for (const d of dsets) { const v = valueAt(d, w, m); if (v != null) vals.push([v, d]); }
+    if (!vals.length) continue;
+    vals.sort((a, b) => b[0] - a[0]);
+    let np = 0, sp = 0, st = 0;
+    for (const [v, d] of vals.slice(0, N)) { st += v; if (d.arxiv.length) { np++; sp += v; } }
+    cntPts.push([w, np]);
+    if (st) sharePts.push([w, (sp / st) * 1000]);
+  }
+  const r = { cntPts, sharePts };
+  paperTrendCache.set(key, r);
+  return r;
+}
+
+function renderPapersSection() {
+  const m = state.metric, rw = state.rankWeek, xm = METRICS[m].xClip, N = state.topN;
+  const H = DATA.hub;
+  let cntPts, sharePts;
+  if (N) {
+    ({ cntPts, sharePts } = paperTrends(m, N));
+  } else {
+    cntPts = H.n_paper.map((v, w) => [w, v]).filter(p => p[1] != null);
+    sharePts = [];
+    for (let w = xm; w < W; w++) { const t = hubAt(w), p = hubPaperAt(w); if (p != null && t) sharePts.push([w, (p / t) * 1000]); }
+  }
+  const scope = N ? `the weekly top ${N} by ${METRICS[m].name}` : 'the full hub';
+  $('paperCaption').replaceChildren('"Has arXiv paper" = at least one ', el('code', {}, 'arxiv:'),
+    ` tag in the dataset's metadata. Trend charts cover ${scope} (follows the Show filter); the table shows datasets with an arXiv paper within the current filters.`);
+  const mkBox = title => { const c = el('div', { class: 'chartbox' }, el('h3', {}, title)); const ch = el('div', { class: 'chart' }); c.append(ch); return [c, ch]; };
+  const [c1, ch1] = mkBox(N ? `Datasets with arXiv paper in top ${N}` : 'Datasets with arXiv paper on hub');
+  const [c2, ch2] = mkBox(`arXiv-paper share of ${m === 'lk' ? 'likes' : 'downloads'}` + (N ? ` in top ${N}` : ''));
+  $('paperCharts').replaceChildren(c1, c2);
+  renderChart(ch1, [{ name: 'Datasets with arXiv paper', color: PALETTE[0], pts: cntPts }], { xStart: N ? xm : 0, height: 150, yFmt: fmt, rankMark: rw });
+  renderChart(ch2, [{ name: m === 'lk' ? 'Share of likes' : 'Share of downloads', color: PALETTE[0], pts: sharePts }], { xStart: xm, height: 150, yFmt: v => fmtPct(v / 1000), rankMark: rw });
+
+  const papers = filteredDatasets().filter(([, d]) => d.arxiv.length);
+  const extraLikes = m !== 'lk';  // avoid a duplicate likes column when likes IS the metric
+  const cols = [
+    { key: 'rank', label: '#', num: true, sortable: false },
+    { key: 'id', label: 'dataset', get: r => r.d.idLow },
+    { key: 'value', label: METRICS[m].name, num: true, get: r => r.v },
+    ...(extraLikes ? [{ key: 'likes', label: 'likes', num: true, get: r => valueAt(r.d, rw, 'lk') ?? -1 }] : []),
+    { key: 'org', label: 'org type', get: r => r.d.org },
+    { key: 'created', label: 'created', get: r => r.d.created || '' },
+    { key: 'topics', label: 'topics', sortable: false },
+    { key: 'arxiv', label: 'arXiv papers', sortable: false },
+  ];
+  const rows = papers.map(([v, d], i) => ({ v, d, rank: i + 1 }));
+  const sc = cols.find(c => c.key === state.paperSort.key);
+  if (sc && sc.get) rows.sort((a, b) => {
+    const av = sc.get(a), bv = sc.get(b);
+    return (av < bv ? -1 : av > bv ? 1 : 0) * state.paperSort.dir;
+  });
+  const CAP = 500;
+  const head = el('tr', {}, ...cols.map(c => el('th', {
+    class: (c.num ? 'num ' : '') + (c.sortable === false ? 'nosort' : ''),
+    onclick: c.sortable === false ? null : () => {
+      if (state.paperSort.key === c.key) state.paperSort.dir *= -1;
+      else state.paperSort = { key: c.key, dir: c.num ? -1 : 1 };
+      renderPapersSection();
+    } },
+    c.label, state.paperSort.key === c.key ? el('span', { class: 'arrow' }, state.paperSort.dir < 0 ? ' ▼' : ' ▲') : '')));
+  const body = rows.slice(0, CAP).map(r => el('tr', {},
+    el('td', { class: 'num' }, r.rank),
+    el('td', {}, el('a', { href: 'https://huggingface.co/datasets/' + encodeURI(r.d.id), target: '_blank', rel: 'noopener' }, r.d.id)),
+    el('td', { class: 'num' }, fmt(r.v)),
+    extraLikes ? el('td', { class: 'num' }, fmt(valueAt(r.d, rw, 'lk'))) : null,
+    el('td', {}, r.d.org),
+    el('td', {}, r.d.created || '–'),
+    el('td', {}, r.d.topics.slice(0, 3).map(t => el('span', { class: 'tagpill' }, DATA.topics[t].name))),
+    el('td', {}, r.d.arxiv.slice(0, 3).map((a, i2) => [i2 ? ' ' : '', el('a', { href: 'https://arxiv.org/abs/' + encodeURIComponent(a), target: '_blank', rel: 'noopener' }, a)]),
+      r.d.arxiv.length > 3 ? ` +${r.d.arxiv.length - 3}` : '')));
+  $('paperTable').replaceChildren(el('thead', {}, head), el('tbody', {}, body));
+  $('paperTableNote').textContent = rows.length > CAP
+    ? `Showing ${CAP} of ${rows.length} datasets with an arXiv paper in the current filter.`
+    : `${rows.length} datasets with an arXiv paper in the current filter.`;
+}
+
+/* ---------- controls ---------- */
+function seg(container, options, get, set) {
+  container.replaceChildren(...options.map(([val, label]) =>
+    el('button', { class: get() === val ? 'on' : '', onclick: () => { set(val); renderAll(); } }, label)));
+}
+function renderControls() {
+  seg($('segMetric'), Object.entries(METRICS).map(([k, c]) => [k, c.btn]), () => state.metric, v => {
+    state.metric = v;
+    if (METRICS[v].xClip && state.rankWeek < AT0) state.rankWeek = LAST;
+  });
+  seg($('segTopN'), [[100, 'Top 100'], [1000, 'Top 1000'], [0, 'All']], () => state.topN, v => { state.topN = v; });
+  seg($('segScale'), [['linear', 'linear'], ['symlog', 'symlog']], () => state.scale, v => { state.scale = v; });
+  seg($('segTopicMode'), [['dl', state.metric === 'lk' ? 'likes' : 'downloads'], ['n', 'dataset count']], () => state.topicMode, v => { state.topicMode = v; });
+
+  const sel = $('selWeek');
+  sel.replaceChildren(...DATA.dates.map((d, i) =>
+    el('option', { value: i, ...(i === state.rankWeek ? { selected: '' } : {}),
+      ...(METRICS[state.metric].xClip && i < AT0 ? { disabled: '' } : {}) }, d)));
+  sel.value = state.rankWeek;
+
+  $('minLabel').textContent = state.metric === 'lk' ? 'Min likes' : 'Min downloads';
+  $('alltimeNote').style.display = METRICS[state.metric].xClip ? '' : 'none';
+}
+
+/* ---------- render root ---------- */
+function renderAll() {
+  renderControls();
+  renderTopicFilterPanel();
+  renderOverview();
+  renderTopicSection();
+  renderDatasetsSection();
+  renderPapersSection();
+}
+
+/* ---------- init ---------- */
+(function init() {
+  $('hdrRange').textContent = DATA.dates[0] + ' → ' + DATA.dates[LAST];
+  $('hdrWeeks').textContent = W;
+  $('hdrBuilt').textContent = DATA.built;
+  $('alltimeDate').textContent = DATA.dates[AT0] || '–';
+  $('ftAlltime').textContent = DATA.dates[AT0] || '–';
+
+  $('selWeek').addEventListener('change', e => { state.rankWeek = +e.target.value; renderAll(); });
+  let minT = null;
+  $('inpMin').addEventListener('input', e => {
+    clearTimeout(minT);
+    minT = setTimeout(() => { state.minDl = Math.max(0, +e.target.value || 0); renderAll(); }, 250);
+  });
+  $('chkPapers').addEventListener('change', e => { state.papersOnly = e.target.checked; renderAll(); });
+  $('inpSearch').addEventListener('input', renderSearch);
+  document.addEventListener('click', e => {
+    if (!$('searchResults').contains(e.target) && e.target !== $('inpSearch')) $('searchResults').style.display = 'none';
+    for (const dd of document.querySelectorAll('details.dd[open]')) if (!dd.contains(e.target)) dd.removeAttribute('open');
+  });
+  let rsT = null;
+  addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(renderAll, 200); });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>

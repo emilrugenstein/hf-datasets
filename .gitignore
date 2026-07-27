@@ -11,3 +11,6 @@ __pycache__/
 
 # Batch snapshot outputs (per-date min files, regenerable from hf_datasets_snapshot_batch.py)
 data/hf_datasets_historic/
+
+# Generated viewer (regenerable from hf_datasets_build_viewer.py; template.html is committed)
+viewer/hf_datasets_viewer.html

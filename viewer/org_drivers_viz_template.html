@@ -83,7 +83,7 @@ const METRIC_LABELS = { dlat: "Total downloads", lk: "Likes" };
 const ACCOUNT_OPTIONS = [["orgs", "Organisations only"], ["all", "Incl. individual accounts"]];
 const SOURCE_NAME = "Hugging Face hub weekly snapshots (hfmlsoc)";
 const SOURCE_HREF = "https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots";
-/* DATA: {dates[w], org_types[t], dlat[t][w], lk[t][w]} — sums per org type per week;
+/* DATA: {dates[w], org_types[t], dlat[t][w], lk[t][w]}: sums per org type per week;
    frozen upstream weeks already smoothed (evenly spread) at build time. */
 const DATA = /*__DATA__*/;
 

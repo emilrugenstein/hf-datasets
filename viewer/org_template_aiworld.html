@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI World — Hugging Face hub organisation ranking</title>
+<title>AI World: Hugging Face hub organisation ranking</title>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
 /* AI World (aiworld.eu / CEPS) house style: system-ui, ink #0f172a, slate #475569,
@@ -12,12 +12,9 @@
   color-scheme: light;
   --ink: #0f172a;
   --muted: #475569;
-  --gray: #333;
   --grid: #DBDBDB;
   --brand: #2756d3;
-  --neutral: #e5e7eb;
   --border: rgba(17,24,39,0.15);
-  --pill: #f8fafc;
   --surface: #ffffff;
   --up: #0a7f3f;
   --down: #E53229;
@@ -78,12 +75,10 @@ svg .grid text { fill: #475569; font-weight: 600; font-size: 11px; }
   max-width: 360px;
 }
 #tooltip .tt-date { font-weight: 700; margin-bottom: 4px; }
-#tooltip .tt-note { color: var(--muted); font-style: italic; margin-bottom: 3px; }
 #tooltip .tt-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
 #tooltip .tt-row .chip { flex: none; }
 #tooltip .tt-row .nm { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
 #tooltip .tt-row .vl { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; padding-left: 12px; }
-#tooltip .tt-row.total { border-top: 1px solid var(--grid); margin-top: 3px; padding-top: 3px; }
 .chip { display: inline-block; width: 11px; height: 11px; border-radius: 2px; }
 /* ---- tables ---- */
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
@@ -118,13 +113,13 @@ td .flat { color: var(--ink); font-weight: 700; }
 .pierow { display: flex; gap: 28px; flex-wrap: wrap; align-items: center; margin: 8px 0 14px; }
 #pieChart { flex: none; }
 #pieList { flex: 1; min-width: 320px; font-size: 13px; }
-#pieList .prow { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--grid); }
+#pieList .prow { display: flex; align-items: baseline; gap: 8px; padding: 7px 0 3px; border-bottom: 1px solid var(--grid); }
 #pieList .prow:last-child { border-bottom: 0; }
 #pieList .prow .chip { flex: none; align-self: center; }
 #pieList .prow .pname { font-weight: 700; }
 #pieList .prow .ppct { font-variant-numeric: tabular-nums; font-weight: 700; margin-left: auto; }
 #pieList .prow .pval { font-variant-numeric: tabular-nums; color: var(--muted); width: 62px; text-align: right; }
-#pieList .psub { color: var(--muted); font-size: 12.5px; padding: 0 0 4px 19px; }
+#pieList .psub { color: var(--muted); font-size: 12.5px; padding: 2px 0 8px 19px; line-height: 1.7; }
 #pieList .psub .porg { white-space: nowrap; }
 #pieList .psub .porg + .porg { margin-left: 14px; }
 #pieList .psub a { color: var(--brand); text-decoration: none; cursor: pointer; }
@@ -147,7 +142,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; line-height: 1.
 
 <header style="margin-top:8px">
   <div class="rowflex">
-    <h1>Hugging Face hub — organisation ranking</h1>
+    <h1>Hugging Face hub: organisation ranking</h1>
     <div class="selector-group" id="segEntity"></div>
   </div>
   <p class="sub">Top accounts on the HF hub: <span id="hdrEntity"></span>,
@@ -157,7 +152,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; line-height: 1.
 
 <section class="card" id="secTopOrgs">
   <div class="rowflex">
-    <div><h2>Top organisations</h2><p class="caption" id="orgsCaption"></p></div>
+    <div><h2>Top accounts</h2><p class="caption" id="orgsCaption"></p></div>
     <div class="controls">
       <div class="fgroup"><span class="flabel">Rank by</span><div class="selector-group" id="segRankMetric"></div></div>
       <div class="fgroup"><span class="flabel">Individuals</span><div class="selector-group" id="segInd"></div></div>
@@ -193,10 +188,10 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; line-height: 1.
 <footer>
   <p class="note">Downloads = ~30-day rolling window · all-time downloads tracked from <span id="ftAlltime"></span>.
   Organisation types are self-declared on <a href="https://huggingface.co/organizations">huggingface.co/organizations</a>,
-  captured by a single scrape (<span id="ftScrape"></span>) applied to <em>every</em> historic snapshot — orgs that changed type,
+  captured by a single scrape (<span id="ftScrape"></span>) applied to <em>every</em> historic snapshot, so orgs that changed type,
   were renamed, or created later are misclassified for earlier weeks. Accounts without an org page count as “individual”.
   Per-account series are keyed on the account name, so a renamed account appears as two series.
-  Frozen upstream weeks (snapshot identical to the prior week): <span id="ftFrozen"></span> — per-account series repeat the prior week's values there.</p>
+  In frozen upstream weeks (snapshot identical to the prior week: <span id="ftFrozen"></span>) per-account series repeat the prior week's values.</p>
   <div class="foot-row">
     <span id="source-text"></span>
     <a class="logo" href="https://aiworld.eu/" target="_blank" rel="noopener"><img src="https://aiworld.eu/logo-transparent.svg" alt="AI World"></a>
@@ -212,13 +207,13 @@ const DATA=/*__DATA__*/;
 
 /* ================= CONFIG: declare everything; nothing implicit ================= */
 const TYPES = DATA.org_types;                       // canonical org-type order (from the build)
-/* Fixed org-type palette — kept from the project's notebook contract (seaborn colorblind)
+/* Fixed org-type palette, kept from the project's notebook contract (seaborn colorblind)
    so org-type colours stay consistent across all project outputs. */
 const COLORS = {
   individual: '#B3B3B3', company: '#DE8F05', community: '#029E73', 'non-profit': '#D55E00',
   university: '#CC78BC', classroom: '#CA9161', government: '#0173B2',
 };
-const INK = '#0f172a', MUTED = '#475569', BRAND = '#2756d3', GRIDC = '#DBDBDB';
+const INK = '#0f172a', MUTED = '#475569';
 const SOURCE_NAME = 'hfmlsoc/hub_weekly_snapshots';
 const SOURCE_HREF = 'https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots';
 const ANIM_MS = 850;                                 // entry animation, first render only
@@ -226,7 +221,7 @@ const RANK_METRICS = { dl: '30-day downloads', dlat: 'total downloads', lk: 'lik
 const REPO_NOUN = { datasets: 'datasets', models: 'models' };
 const TABLE_ROWS = 100;                              // ranking table length (full-hub ranking)
 const TOP3_SHADES = [0.62, 0.75, 0.88];              // darker(color, f) per rank, darkest = #1
-/* Histogram bin labels — must match the build's HIST_EDGES; rendered in this order. */
+/* Histogram bin labels; must match the build's HIST_EDGES, rendered in this order. */
 const HIST_BINS = {
   hd: { title: 'total downloads per dataset', labels: ['0', '1–9', '10–99', '100–999', '1K–10K', '10K–100K', '0.1–1M', '≥1M'] },
   hl: { title: 'likes per dataset', labels: ['0', '1–9', '10–99', '100–999', '1K–10K', '≥10K'] },
@@ -314,15 +309,13 @@ function niceMax(v) {
 
 /* ---------- tooltip ---------- */
 const tooltip = $('tooltip');
-function showTooltip(x, y, dateStr, rows, noteText) {
-  tooltip.replaceChildren(...[
+function showTooltip(x, y, dateStr, rows) {
+  tooltip.replaceChildren(
     el('div', { class: 'tt-date' }, dateStr),
-    noteText ? el('div', { class: 'tt-note' }, noteText) : null,
-    ...rows.map(r => el('div', { class: 'tt-row' + (r.total ? ' total' : '') },
+    ...rows.map(r => el('div', { class: 'tt-row' },
       el('span', { class: 'chip', style: `background:${r.color}` }),
       el('span', { class: 'nm' }, r.name),
-      el('span', { class: 'vl' }, r.value))),
-  ].filter(Boolean));
+      el('span', { class: 'vl' }, r.value))));
   tooltip.style.display = 'block';
   const bw = tooltip.offsetWidth, bh = tooltip.offsetHeight;
   tooltip.style.left = Math.min(x + 14, innerWidth - bw - 8) + 'px';
@@ -476,10 +469,10 @@ function valueAt(o, w, key) {
 function topOrgs() {
   return rankedAccounts(state.rankMetric, state.rankWeek).slice(0, TABLE_ROWS);
 }
-/* Δ cell: a value that rounds to 0.0% is flat — neutral ink with a thick dash */
+/* Δ cell: a value that rounds to 0.0% is flat, so plain neutral ink, no marker */
 function deltaCell(delta) {
   if (delta == null) return '–';
-  if ((Math.abs(delta) * 100).toFixed(1) === '0.0') return el('span', { class: 'flat' }, '– 0.0%');
+  if ((Math.abs(delta) * 100).toFixed(1) === '0.0') return el('span', { class: 'flat' }, '0.0%');
   return el('span', { class: delta >= 0 ? 'up' : 'down' }, (delta >= 0 ? '▲ +' : '▼ ') + (delta * 100).toFixed(1) + '%');
 }
 function renderOrgTable() {
@@ -526,9 +519,9 @@ function renderOrgTable() {
   $('orgTable').replaceChildren(el('table', {}, el('thead', {}, head), el('tbody', {}, body)));
 
   $('orgsCaption').textContent = (m === 'dlat' && rw < AT0)
-    ? `Total downloads are tracked from ${E.dates[AT0]} — pick a later rank week.`
+    ? `Total downloads are tracked from ${E.dates[AT0]}, so pick a later rank week.`
     : `Top ${rows.length} accounts by ${rankLabel(m)} at ${E.dates[rw]}`
-      + (state.includeInd ? ' (individual accounts included).' : ' (organisations only — switch Individuals to include personal accounts).');
+      + (state.includeInd ? ' (individual accounts included).' : ' (organisations only; switch Individuals to include personal accounts).');
   $('orgTableNote').textContent = `Shares and the donut are relative to the full hub, never to the accounts shown here. `
     + `Pool = every account that ever entered a weekly top by downloads, likes, or ${noun} count (${ORGS.length} accounts embedded). `
     + `Click a row for the account statistics below.`;
@@ -551,10 +544,10 @@ function pieItems() {
 function renderPie() {
   const box = $('pieChart'), list = $('pieList');
   const m = state.rankMetric, rw = state.rankWeek;
-  $('pieTitle').textContent = `Distribution of ${rankLabel(m)} at ${E.dates[rw]} — full hub`;
+  $('pieTitle').textContent = `Distribution of ${rankLabel(m)} at ${E.dates[rw]} across the full hub`;
   if (m === 'dlat' && rw < AT0) {
     box.replaceChildren();
-    list.replaceChildren(el('p', { class: 'note' }, `All-time downloads are tracked from ${E.dates[AT0]} — pick a later rank week.`));
+    list.replaceChildren(el('p', { class: 'note' }, `All-time downloads are tracked from ${E.dates[AT0]}, so pick a later rank week.`));
     return;
   }
   const items = pieItems();
@@ -640,7 +633,7 @@ function renderDrilldown() {
   const noun = REPO_NOUN[state.entity];
   const color = COLORS[o.type];
   const o2 = state.compareOrg && state.compareOrg !== o.name ? ORG_BY_NAME.get(state.compareOrg) : null;
-  // same type would mean the same color — use a darker shade for the comparison
+  // same type would mean the same color, so use a darker shade for the comparison
   const cmpColor = o2 ? (o2.type === o.type ? darker(color, 0.6) : COLORS[o2.type]) : null;
   $('ddHint').replaceChildren('Showing ', el('b', {}, o.name), ' ',
     el('span', { class: 'typechip' }, el('span', { class: 'chip', style: `background:${color}` }), o.type),

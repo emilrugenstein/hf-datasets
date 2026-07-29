@@ -27,7 +27,7 @@ import hf_org_trends_build_viewer as base
 base.TEMPLATE = Path("viewer/org_template_aiworld.html")
 base.OUT_HTML = Path("viewer/hf_org_trends_viewer_aiworld.html")
 
-KEEP_ENTITY = {"label", "dates", "alltime_start", "frozen", "by_type", "top3", "top3_names", "orgs"}
+KEEP_ENTITY = {"label", "dates", "alltime_start", "by_type", "top3", "top3_names", "orgs"}
 KEEP_BY_TYPE = {"dl", "dlat", "lk", "n"}  # the pie's four rank metrics
 
 _render_html = base.render_html

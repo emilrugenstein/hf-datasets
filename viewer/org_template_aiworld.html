@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI World: Hugging Face hub organisation ranking</title>
+<title>AI World: Hugging Face hub account ranking</title>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
 /* AI World (aiworld.eu / CEPS) house style: system-ui, ink #0f172a, slate #475569,
@@ -142,12 +142,11 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; line-height: 1.
 
 <header style="margin-top:8px">
   <div class="rowflex">
-    <h1>Hugging Face hub: organisation ranking</h1>
+    <h1>Hugging Face hub: account ranking</h1>
     <div class="selector-group" id="segEntity"></div>
   </div>
-  <p class="sub">Top accounts on the HF hub: <span id="hdrEntity"></span>,
-  weekly snapshots <span id="hdrRange"></span> (<span id="hdrWeeks"></span> weeks · built <span id="hdrBuilt"></span>).
-  Shares are always relative to the <em>full hub</em>; the ranking table and account statistics cover the embedded top-account pool.</p>
+  <p class="sub">The accounts that lead the Hugging Face hub in <span id="hdrEntity"></span>,
+  ranked from weekly snapshots <span id="hdrRange"></span> (<span id="hdrWeeks"></span> weeks · built <span id="hdrBuilt"></span>).</p>
 </header>
 
 <section class="card" id="secTopOrgs">
@@ -170,9 +169,10 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; line-height: 1.
 
 <section class="card" id="secDrilldown">
   <h2>Account statistics</h2>
-  <p class="caption">Weekly history and latest-snapshot distributions of a single account, coloured by its organisation type. Click a table row above or search here.</p>
+  <p class="caption">Weekly history and latest-snapshot distributions for one account, coloured by its organisation type.
+  Pick an account by clicking a table row above or searching here; the compare box on the right overlays a second account on every chart.</p>
   <div class="searchrow">
-    <input type="search" id="inpSearch" placeholder="Search organisation…" style="width:300px" autocomplete="off">
+    <input type="search" id="inpSearch" placeholder="Search account…" style="width:300px" autocomplete="off">
     <span class="note" id="ddHint"></span>
     <span style="margin-left:auto"></span>
     <span class="note" id="cmpHint"></span>
@@ -186,12 +186,11 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; line-height: 1.
 </section>
 
 <footer>
-  <p class="note">Downloads = ~30-day rolling window · all-time downloads tracked from <span id="ftAlltime"></span>.
+  <p class="note">30-day downloads cover a rolling ~30-day window; total downloads are all-time counts, tracked from <span id="ftAlltime"></span>.
   Organisation types are self-declared on <a href="https://huggingface.co/organizations">huggingface.co/organizations</a>,
   captured by a single scrape (<span id="ftScrape"></span>) applied to <em>every</em> historic snapshot, so orgs that changed type,
   were renamed, or created later are misclassified for earlier weeks. Accounts without an org page count as “individual”.
-  Per-account series are keyed on the account name, so a renamed account appears as two series.
-  In frozen upstream weeks (snapshot identical to the prior week: <span id="ftFrozen"></span>) per-account series repeat the prior week's values.</p>
+  Per-account series are keyed on the account name, so a renamed account appears as two series.</p>
   <div class="foot-row">
     <span id="source-text"></span>
     <a class="logo" href="https://aiworld.eu/" target="_blank" rel="noopener"><img src="https://aiworld.eu/logo-transparent.svg" alt="AI World"></a>
@@ -486,7 +485,7 @@ function renderOrgTable() {
 
   const cols = [
     { key: 'rank', label: '#', num: true, get: r => r.rank },
-    { key: 'name', label: 'organisation', get: r => r.o.nameLow },
+    { key: 'name', label: `top ${TABLE_ROWS} accounts`, get: r => r.o.nameLow },
     { key: 'type', label: 'org type', get: r => r.o.type },
     { key: 'dl', label: '30-day downloads', num: true, get: r => r.dl ?? -1 },
     { key: 'dlat', label: 'total downloads', num: true, get: r => r.dlat ?? -1 },
@@ -522,9 +521,9 @@ function renderOrgTable() {
     ? `Total downloads are tracked from ${E.dates[AT0]}, so pick a later rank week.`
     : `Top ${rows.length} accounts by ${rankLabel(m)} at ${E.dates[rw]}`
       + (state.includeInd ? ' (individual accounts included).' : ' (organisations only; switch Individuals to include personal accounts).');
-  $('orgTableNote').textContent = `Shares and the donut are relative to the full hub, never to the accounts shown here. `
-    + `Pool = every account that ever entered a weekly top by downloads, likes, or ${noun} count (${ORGS.length} accounts embedded). `
-    + `Click a row for the account statistics below.`;
+  $('orgTableNote').textContent = `The donut and all shares refer to the full hub, never just the accounts listed here. `
+    + `The table ranks the embedded pool: every account that ever reached a weekly top by downloads, likes, or ${noun} count (${ORGS.length} accounts). `
+    + `Click a row to load its account statistics below.`;
 }
 
 /* ---------- section: distribution pie (follows the Rank by selector) ---------- */
@@ -544,7 +543,7 @@ function pieItems() {
 function renderPie() {
   const box = $('pieChart'), list = $('pieList');
   const m = state.rankMetric, rw = state.rankWeek;
-  $('pieTitle').textContent = `Distribution of ${rankLabel(m)} at ${E.dates[rw]} across the full hub`;
+  $('pieTitle').textContent = `Distribution of ${rankLabel(m)} across the full hub at ${E.dates[rw]}`;
   if (m === 'dlat' && rw < AT0) {
     box.replaceChildren();
     list.replaceChildren(el('p', { class: 'note' }, `All-time downloads are tracked from ${E.dates[AT0]}, so pick a later rank week.`));
@@ -612,7 +611,7 @@ function renderPie() {
       el('span', { class: 'sh' }, ` ${fmtPct(o.v / it.v)}`)))));
     return rows;
   }),
-  el('p', { class: 'note' }, `Shaded pie segments = each type's top 3 organisations (share of the whole hub); percentages next to the names are shares within the type.`));
+  el('p', { class: 'note' }, `Shaded pie segments show each type's top 3 accounts (numbered 1. to 3. in this list), sized by their share of the whole hub; the percentage after each name is its share within its own type. Click a name to open its account statistics.`));
 }
 
 /* ---------- section: account statistics ---------- */
@@ -626,7 +625,7 @@ function renderDrilldown() {
   const box = $('ddCharts');
   const o = ORGS.find(x => x.name === state.selectedOrg);
   if (!o) {
-    box.replaceChildren(el('p', { class: 'note' }, 'No organisation selected.'));
+    box.replaceChildren(el('p', { class: 'note' }, 'No account selected.'));
     $('ddHists').replaceChildren(); $('ddNote').textContent = ''; $('ddHint').textContent = ''; $('cmpHint').textContent = '';
     return;
   }
@@ -680,8 +679,8 @@ function renderDrilldown() {
     else ch.append(el('p', { class: 'note' }, 'not in the latest snapshot'));
     return holder;
   }));
-  $('ddNote').textContent = `Distributions across ${o.name}'s${o2 ? ` and ${o2.name}'s` : ''} ${noun} in the latest snapshot (${E.dates[LAST]}); `
-    + `sizes from mainSize (bytes), downloads = all-time.`;
+  $('ddNote').textContent = `Bottom row: distributions across ${o.name}'s${o2 ? ` and ${o2.name}'s` : ''} ${noun} in the latest snapshot (${E.dates[LAST]}). `
+    + `Sizes are repository bytes (mainSize); downloads are all-time totals.`;
 }
 
 /* ---------- controls (house build/wire pattern: class-driven active state) ---------- */
@@ -712,7 +711,6 @@ function renderHeader() {
   $('hdrBuilt').textContent = DATA.built;
   $('ftAlltime').textContent = E.dates[AT0] || '–';
   $('ftScrape').textContent = (DATA.orgs_scrape.match(/\d{4}-\d{2}-\d{2}/) || [DATA.orgs_scrape])[0];
-  $('ftFrozen').textContent = E.frozen.length ? E.frozen.map(i => E.dates[i]).join(', ') : 'none detected';
 }
 /* graceful failure: never fail silently on a render error */
 function showError(err) {
@@ -747,7 +745,7 @@ function orgSearchDropdown(inputId, boxId, pick) {
   }
   box.replaceChildren(...hits.map(o => el('div', { onclick: () => { pick(o.name); $(inputId).value = ''; box.style.display = 'none'; } },
     o.name, el('span', { class: 'meta' }, o.type + ' · ' + fmtBig(valueAt(o, state.rankWeek, 'dl')) + ' dl'))));
-  if (!hits.length) box.replaceChildren(el('div', { style: 'color:var(--muted)' }, 'no match in the embedded top-org pool'));
+  if (!hits.length) box.replaceChildren(el('div', { style: 'color:var(--muted)' }, 'no match in the embedded account pool'));
   box.style.display = 'block';
 }
 function renderSearch() { orgSearchDropdown('inpSearch', 'searchResults', selectOrg); }

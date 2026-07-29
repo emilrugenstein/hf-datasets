@@ -45,12 +45,49 @@ Per-column compressed sizes in the latest snapshot (377 MB total): `cardData` 20
    attached (`arxiv:` tags), switchable between four metrics: 30-day downloads,
    all-time downloads, all-time growth (downloads gained since 2025-02-26), and
    likes. Re-run after new snapshots; `--quick 8` for fast iteration.
-5. `hf_datasets_historic_trends.ipynb` — static thesis-style trend figures, ported
+5. `hf_orgs_build_dashboard.py` — builds the interactive organisation dashboard
+   `viewer/hf_orgs_dashboard.html` (gitignored, ~39 MB, self-contained). Ranks
+   accounts (orgs + users) by 30-day downloads, all-time downloads (tracked from
+   2025-02-26), and weekly like gains, with
+   datasets / models / combined modes, a concentration section (share of
+   hub-wide downloads/likes driven by the top N, incl. a size-weighted data-volume
+   tile: downloads × `mainSize`, read remotely from the latest raw snapshot —
+   `--skip-size` to build offline — and a by-country breakdown of the ranked
+   cohort's metric), and a sankey (top-N accounts by org type:
+   share of repos vs share of downloads/like gains). Models weekly minima are read
+   as-is from the old capstone project (`--models-dir`, ends 2026-04-22);
+   combined mode covers the weeks both hubs share. The embedded pool holds every
+   account ever in a weekly top 500 (`--top-pool`), so the UI's top-N selector
+   (25–500, default 100) needs no rebuild to go beyond 100. Org types/followers
+   come from the newest `data/hf_orgs` scrape; account countries from the newest
+   `data/hf_orgs/org_countries_*.csv` (LLM-assisted HQ classification of the
+   top-500 dataset accounts at build date, conservative → "unknown"; committed).
+6. `hf_datasets_historic_trends.ipynb` — static thesis-style trend figures, ported
    from the capstone's `hf_main_historic_trends.ipynb` (models): downloads/likes/
    counts/newly-added by org type, top-N concentration, spike attribution,
    single-dataset history, and license trends. Licenses are derived from
    `license:*` entries in `tags`, so license trends cover the full 104 weeks
    (unlike models, where license only existed from 2025-02-26).
+7. `hf_org_trends_build_viewer.py` — builds the org-type trends viewer
+   `viewer/hf_org_trends_viewer.html` (gitignored, ~2 MB, self-contained), the
+   interactive counterpart to the notebook's org-type figures in the same visual
+   style (serif/whitegrid, fixed org-type palette). Sections: stacked
+   downloads/likes per org type (absolute or 100% share with a total line, with
+   an optional darker top-10 datasets/orgs concentration sub-band), a
+   concentration sankey (share of dataset counts vs share of the selected
+   metric per org type at the rank week), population
+   counts + weekly newly-added bars (frozen upstream weeks striped), a
+   dataset-size tile (mean log₁₀ size ±1 SD per org type, unweighted vs
+   weighted by the selected metric; switchable between rows from
+   `size_categories:*` tags — full history — and bytes from `mainSize`, which
+   only min files rebuilt after 2026-07 carry), a
+   multi-metric top-100 organisation table with a distribution donut (metric
+   share per org type at the rank week, each type's top-3 orgs as shaded
+   sub-slices), and a per-organisation drill-down.
+   org_type is re-joined from the newest `data/hf_orgs` scrape (overriding the
+   baked column); the models toggle is a stub until model snapshots are ingested
+   (`viewer/org_template.html` + `--entities datasets,models` are ready for it).
+   Re-run after new snapshots; `--quick 8` for fast iteration.
 
 ## ⚠ Open decisions
 

@@ -56,9 +56,12 @@ ORGS_CSV = Path("data/hf_orgs/hf_orgs_scraped_2026-04-30.csv")
 # PROVISIONAL column selection (decision deferred — see README "Open decisions").
 # Currently: analytical core + governance/provenance. Always dropped: `cardData`
 # (only its derived `license` is kept), `sha`, `key`, `description`.
+# `mainSize` (repo size in bytes, ~99.9% coverage) exists only from ~2026 H1 —
+# older snapshots get None via the schema fallback, and min files written
+# before it was added lack the column entirely (re-run with --force to add it).
 READ_COLS = [
     "_id", "id", "author", "createdAt", "tags",
-    "likes", "downloads", "downloadsAllTime", "trendingScore"
+    "likes", "downloads", "downloadsAllTime", "trendingScore", "mainSize"
 ]
 KEEP_COLS = [c for c in READ_COLS if c != "cardData"] + ["org_type"]
 

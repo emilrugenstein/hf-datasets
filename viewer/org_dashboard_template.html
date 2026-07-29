@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HF — organisation dashboard</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --up: #006300;
+  --down: #d03b3b;
+  --dim: #b9b8b1;
+  --pinbg: rgba(42,120,214,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --up: #0ca30c;
+    --down: #e66767;
+    --dim: #52514e;
+    --pinbg: rgba(57,135,229,0.16);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wrap { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+h1 { font-size: 22px; margin: 0 0 2px; }
+h2 { font-size: 16px; margin: 0 0 4px; }
+.sub, .caption { color: var(--ink-2); font-size: 13px; margin: 0; }
+.caption { margin-top: 2px; }
+.note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 18px; margin-top: 16px;
+}
+/* ---- filter row ---- */
+.filters {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: flex-end;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 18px; margin-top: 16px;
+  box-shadow: 0 2px 8px rgba(11,11,11,0.04);
+}
+.fgroup > .flabel {
+  display: block; font-size: 11px; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 4px;
+}
+.seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 7px; overflow: hidden; }
+.seg button {
+  border: 0; background: transparent; color: var(--ink-2);
+  padding: 5px 11px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--grid); }
+.seg button.on { background: var(--ink); color: var(--page); }
+select, input[type=search] {
+  font: inherit; font-size: 13px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--axis);
+  border-radius: 7px; padding: 5px 8px;
+}
+/* ---- stat tiles ---- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 12px; margin: 12px 0 4px; }
+.tile { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; background: var(--surface); }
+.tile .tlabel { font-size: 12px; color: var(--ink-2); }
+.tile .tvalue { font-size: 26px; font-weight: 650; margin: 2px 0; }
+.tile .tdelta { font-size: 12px; color: var(--muted); }
+.tile .tdelta .up { color: var(--up); font-weight: 600; }
+.tile .tdelta .down { color: var(--down); font-weight: 600; }
+.tile .crow { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink-2); margin: 3px 0; }
+.tile .crow .cc { width: 52px; white-space: nowrap; }
+.tile .crow .cbarw { flex: 1; height: 7px; background: var(--page); border-radius: 3px; }
+.tile .crow .cbar { height: 100%; background: var(--s1); border-radius: 3px; }
+.tile .crow .cbar.gray { background: var(--dim); }
+.tile .crow .cpc { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+/* ---- charts ---- */
+.smallmult { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
+.chartbox { min-width: 0; }
+.chartbox h3 { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 0 0 2px; }
+.chart svg { display: block; width: 100%; }
+.chart { position: relative; }
+#tooltip {
+  position: fixed; z-index: 100; pointer-events: none; display: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(11,11,11,0.15); padding: 8px 10px; font-size: 12px;
+  max-width: 340px;
+}
+#tooltip .tt-date { font-weight: 600; margin-bottom: 4px; }
+#tooltip .tt-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+#tooltip .tt-row .chip { flex: none; }
+#tooltip .tt-row .nm { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+#tooltip .tt-row .vl { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.linechip { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+/* ---- legends ---- */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; }
+.legend .lg {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2);
+  border: 1px solid var(--border); border-radius: 14px; padding: 2px 10px; background: var(--surface);
+}
+.legend .lg.click { cursor: pointer; }
+.legend .lg .x { color: var(--muted); font-weight: 600; margin-left: 2px; }
+.legend .lg.click:hover { border-color: var(--ink-2); }
+/* ---- table ---- */
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--grid); }
+th { color: var(--ink-2); font-weight: 600; font-size: 12px; white-space: nowrap; position: sticky; top: 0; background: var(--surface); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td a { color: var(--s1); text-decoration: none; }
+td a:hover { text-decoration: underline; }
+td .drk { font-variant-numeric: tabular-nums; font-size: 12px; }
+td .drk.up { color: var(--up); }
+td .drk.down { color: var(--down); }
+td .drk.same, td .drk.new { color: var(--muted); }
+.tagpill { display: inline-block; background: var(--page); border: 1px solid var(--grid); border-radius: 9px; padding: 0 7px; font-size: 11px; color: var(--ink-2); white-space: nowrap; }
+.toplist { max-height: 520px; overflow-y: auto; margin-top: 10px; border: 1px solid var(--grid); border-radius: 8px; }
+.toplist table { font-size: 12.5px; }
+.toplist tbody tr { cursor: pointer; }
+.toplist tbody tr:hover { background: var(--page); }
+.toplist tr.pinned { background: var(--pinbg); }
+.searchrow { display: flex; gap: 10px; align-items: center; margin: 8px 0 2px; }
+.rowflex { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
+footer a { color: var(--s1); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header style="margin-top:8px">
+  <h1>Hugging Face — organisation dashboard</h1>
+  <p class="sub">Weekly account rankings by 30-day downloads and weekly like gains
+  (<span id="hdrRange"></span> · built <span id="hdrBuilt"></span>).
+  Accounts = organisations and users; hub totals cover the <em>full hub</em>, the ranking covers
+  every account ever in a weekly top <span id="hdrPool"></span>.</p>
+</header>
+
+<div class="filters">
+  <div class="fgroup"><span class="flabel">Hub</span><div class="seg" id="segMode"></div></div>
+  <div class="fgroup"><span class="flabel">Metric</span><div class="seg" id="segMetric"></div></div>
+  <div class="fgroup"><span class="flabel">Show</span><div class="seg" id="segTopN"></div></div>
+  <div class="fgroup"><span class="flabel">Rank week</span><select id="selWeek"></select></div>
+  <div class="fgroup"><span class="flabel">Scale</span><div class="seg" id="segScale"></div></div>
+</div>
+<p class="note" id="modeNote"></p>
+
+<section class="card" id="secRank">
+  <div class="rowflex">
+    <div><h2 id="rankTitle">Top accounts</h2><p class="caption" id="rankCaption"></p></div>
+  </div>
+  <div class="chart chartbox" id="rankChart"></div>
+  <div class="legend" id="rankLegend"></div>
+  <div class="searchrow">
+    <input type="search" id="inpFilter" placeholder="Filter accounts…" style="width:280px" autocomplete="off">
+    <span class="note" id="pinHint" style="margin:0">Click a row or a line to pin an account to the chart.</span>
+  </div>
+  <div class="toplist" id="rankList"></div>
+</section>
+
+<section class="card" id="secShare">
+  <h2>Concentration — what these accounts drive</h2>
+  <p class="caption" id="shareCaption"></p>
+  <div class="tiles" id="shareTiles"></div>
+  <div class="smallmult" id="shareCharts"></div>
+  <div class="legend" id="shareLegend"></div>
+  <p class="note" id="shareNote"></p>
+</section>
+
+<section class="card" id="secSankey">
+  <h2 id="sankeyTitle">Few accounts, most of the traffic</h2>
+  <p class="caption" id="sankeyCaption"></p>
+  <div class="chart chartbox" id="sankeyChart"></div>
+  <div class="legend" id="sankeyLegend"></div>
+  <p class="note" id="sankeyNote"></p>
+</section>
+
+<footer>Data: <a href="https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots">hfmlsoc/hub_weekly_snapshots</a>
+· downloads = ~30-day rolling window, likes = cumulative (gains are week-over-week differences)
+· org types from the HF org directory scrape
+· countries: LLM-assisted HQ classification of the latest top-500 dataset accounts (conservative, else "unknown"; <code>data/hf_orgs/org_countries_*.csv</code>)
+· <span id="ftModes"></span>.</footer>
+
+</div>
+<div id="tooltip"></div>
+
+<script>
+"use strict";
+const DATA=/*__DATA__*/;
+
+/* ---------- decode & constants ---------- */
+const PALETTE = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)','var(--s6)','var(--s7)','var(--s8)'];
+const GRAY = 'var(--dim)';
+function decSer(x) { return x ? { dlS: x[0], dl: x[1], lkS: x[2], lk: x[3], nS: x[0], n: x[4], dlatS: x[0], dlat: x[5] } : null; }
+const orgs = DATA.orgs.map(t => ({
+  name: t[0], nameLow: t[0].toLowerCase(), type: DATA.org_types[t[1]], followers: t[2],
+  country: DATA.countries[t[6]] || 'unknown',
+  ser: { ds: decSer(t[3]), md: decSer(t[4]), cb: decSer(t[5]) },
+}));
+const orgsByMode = { ds: orgs.filter(o => o.ser.ds), md: orgs.filter(o => o.ser.md), cb: orgs.filter(o => o.ser.cb) };
+const byName = new Map(orgs.map(o => [o.name, o]));
+for (const m of Object.values(DATA.modes)) m.dates = m.weeks.map(i => DATA.dates[i]);
+
+const METRICS = {
+  dl:   { btn: '30-day downloads', name: 'downloads (30d)' },
+  dlat: { btn: 'all-time downloads', name: 'downloads (all-time)' },
+  lkd:  { btn: 'likes gained / wk', name: 'likes gained per week' },
+};
+/* first usable week of a metric in the current mode (all-time tracked from 2025-02-26) */
+function metricXStart(m) {
+  if (m === 'lkd') return 1;
+  if (m === 'dlat') return DATA.modes[state.mode].at0 ?? 0;
+  return 0;
+}
+const TOPN_OPTIONS = [25, 50, 100, 250, 500].filter(n => n <= DATA.pool);
+
+/* ---------- state ---------- */
+const state = {
+  mode: 'ds',        // 'ds' | 'md' | 'cb'
+  metric: 'dl',      // 'dl' | 'lkd'
+  topN: 100,
+  rankWeek: DATA.modes.ds.weeks.length - 1,  // mode-local week index
+  scale: 'linear',
+  pinned: [],        // account names
+  filter: '',
+};
+const orgColors = new Map();  // account name -> palette slot
+
+const MODE = () => DATA.modes[state.mode];
+const nW = () => MODE().weeks.length;
+
+/* ---------- per-account values (mode-local week index) ---------- */
+function serAt(ser, w, key) {
+  const a = ser[key], i = w - ser[key + 'S'];
+  return (i >= 0 && i < a.length) ? a[i] : null;
+}
+function dlAt(o, w)  { const s = o.ser[state.mode]; return s ? serAt(s, w, 'dl') : null; }
+function lkAt(o, w)  { const s = o.ser[state.mode]; return s ? serAt(s, w, 'lk') : null; }
+function nAt(o, w)   { const s = o.ser[state.mode]; return s ? serAt(s, w, 'n') : null; }
+function lkdAt(o, w) {
+  if (w <= 0) return null;
+  const a = lkAt(o, w), b = lkAt(o, w - 1);
+  return (a == null || b == null) ? null : a - b;
+}
+function dlatAt(o, w) { const s = o.ser[state.mode]; return s ? serAt(s, w, 'dlat') : null; }
+function valAt(o, w) { return state.metric === 'dl' ? dlAt(o, w) : state.metric === 'dlat' ? dlatAt(o, w) : lkdAt(o, w); }
+function ptsOf(o, getter) {
+  const pts = [];
+  for (let w = 0; w < nW(); w++) { const v = getter(o, w); if (v != null) pts.push([w, v]); }
+  return pts;
+}
+/* hub totals */
+function hubDl(w)  { return MODE().hub.dl[w]; }
+function hubLkd(w) { return w > 0 ? MODE().hub.lk[w] - MODE().hub.lk[w - 1] : null; }
+function hubVal(w) { return state.metric === 'dl' ? hubDl(w) : state.metric === 'dlat' ? MODE().hub.dlat[w] : hubLkd(w); }
+
+/* ranking at a week over the embedded pool (exact for N <= pool) */
+function ranking(w, getter) {
+  const g = getter || valAt, out = [];
+  for (const o of orgsByMode[state.mode]) { const v = g(o, w); if (v != null) out.push([v, o]); }
+  out.sort((a, b) => b[0] - a[0]);
+  return out;
+}
+
+/* ---------- tiny DOM helper ---------- */
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, ...kids) {
+  const n = tag.startsWith('svg:') ? document.createElementNS(SVGNS, tag.slice(4)) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (v != null) n.setAttribute(k, v);
+  }
+  for (const k of kids.flat(2)) if (k != null) n.append(k.nodeType ? k : String(k));
+  return n;
+}
+const $ = id => document.getElementById(id);
+
+/* ---------- formatting ---------- */
+function fmt(v) {
+  if (v == null) return '–';
+  const a = Math.abs(v);
+  if (a >= 1e9) return trim1(v / 1e9) + 'B';
+  if (a >= 1e6) return trim1(v / 1e6) + 'M';
+  if (a >= 1e3) return trim1(v / 1e3) + 'K';
+  return String(Math.round(v));
+}
+function trim1(x) { return (Math.abs(x) >= 100 ? Math.round(x) : Math.round(x * 10) / 10).toString(); }
+function fmtSigned(v) { return v == null ? '–' : (v > 0 ? '+' : '') + fmt(v); }
+function fmtBytes(v) {
+  if (v == null) return '–';
+  const U = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+  let i = 0;
+  while (Math.abs(v) >= 1000 && i < U.length - 1) { v /= 1000; i++; }
+  return trim1(v) + ' ' + U[i];
+}
+function fmtPct(x) { return x == null ? '–' : (x * 100).toFixed(Math.abs(x) < 0.1 ? 2 : 1) + '%'; }
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDate(ds) { return MONTHS[+ds.slice(5, 7) - 1] + " '" + ds.slice(2, 4); }
+
+/* ---------- scales (allow negatives: like gains can dip below zero) ---------- */
+function niceStep(x) {
+  const p = Math.pow(10, Math.floor(Math.log10(Math.abs(x) || 1)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= x) return m * p;
+  return 10 * p;
+}
+function makeScale(kind, min, max, h) {
+  min = Math.min(0, min); max = Math.max(0, max);
+  if (min === 0 && max === 0) max = 1;
+  if (kind === 'symlog') {
+    const sl = v => Math.sign(v) * Math.log10(1 + Math.abs(v));
+    const top = sl(max), bot = sl(min), span = (top - bot) || 1;
+    const ticks = [0];
+    for (let t = 1; t <= max; t *= 10) ticks.push(t);
+    for (let t = 1; t <= -min; t *= 10) ticks.unshift(-t);
+    while (ticks.length > 7) for (let i = ticks.length - 2; i > 0; i -= 2) ticks.splice(i, 1);
+    return { y: v => h - ((sl(v) - bot) / span) * h, ticks };
+  }
+  const step = niceStep((max - min) / 4 || 1);
+  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step || step;
+  const ticks = [];
+  for (let t = lo; t <= hi + step / 2; t += step) ticks.push(t);
+  return { y: v => h - ((v - lo) / (hi - lo)) * h, ticks };
+}
+
+/* ---------- tooltip ---------- */
+const tooltip = $('tooltip');
+function showTooltip(x, y, dateStr, rows) {
+  tooltip.replaceChildren(el('div', { class: 'tt-date' }, dateStr),
+    ...rows.map(r => el('div', { class: 'tt-row' },
+      el('span', { class: 'chip', style: `background:${r.color}` }),
+      el('span', { class: 'nm' }, r.name),
+      el('span', { class: 'vl' }, r.value))));
+  tooltip.style.display = 'block';
+  const bw = tooltip.offsetWidth, bh = tooltip.offsetHeight;
+  tooltip.style.left = Math.min(x + 14, innerWidth - bw - 8) + 'px';
+  tooltip.style.top = Math.min(y + 14, innerHeight - bh - 8) + 'px';
+}
+function hideTooltip() { tooltip.style.display = 'none'; }
+
+/* ---------- line chart ----------
+   series: [{name, color, pts:[[w,v]...], width?, dim?}] — w is mode-local week
+   opts: {xStart, height, yKind, yFmt, rankMark?, onPick?(name)} */
+function renderChart(container, series, opts) {
+  container.replaceChildren();
+  const cw = container.clientWidth || 600;
+  const H = opts.height || 260, ML = 52, MR = 14, MT = 10, MB = 24;
+  const iw = cw - ML - MR, ih = H - MT - MB;
+  const last = nW() - 1, x0 = opts.xStart || 0, span = Math.max(1, last - x0);
+  const X = w => ML + ((w - x0) / span) * iw;
+  let max = 0, min = 0;
+  for (const s of series) for (const [, v] of s.pts) { if (v > max) max = v; if (v < min) min = v; }
+  const sc = makeScale(opts.yKind || 'linear', min, max, ih);
+  const Y = v => MT + sc.y(v);
+  const svg = el('svg:svg', { viewBox: `0 0 ${cw} ${H}`, width: cw, height: H });
+
+  for (const t of sc.ticks) {
+    svg.append(el('svg:line', { x1: ML, x2: cw - MR, y1: Y(t), y2: Y(t), stroke: 'var(--grid)', 'stroke-width': 1 }));
+    svg.append(el('svg:text', { x: ML - 6, y: Y(t) + 3.5, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--muted)' },
+      opts.yFmt ? opts.yFmt(t) : fmt(t)));
+  }
+  const dates = MODE().dates;
+  const nx = Math.min(6, span + 1);
+  for (let i = 0; i < nx; i++) {
+    const w = Math.round(x0 + (span * i) / (nx - 1 || 1));
+    svg.append(el('svg:text', { x: X(w), y: H - 7, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--muted)' }, fmtDate(dates[w])));
+  }
+  svg.append(el('svg:line', { x1: ML, x2: cw - MR, y1: Y(0), y2: Y(0), stroke: 'var(--axis)', 'stroke-width': 1 }));
+  if (opts.rankMark != null && opts.rankMark >= x0)
+    svg.append(el('svg:line', { x1: X(opts.rankMark), x2: X(opts.rankMark), y1: MT, y2: MT + ih, stroke: 'var(--axis)', 'stroke-dasharray': '3 3' }));
+
+  const ordered = [...series.filter(s => s.dim), ...series.filter(s => !s.dim)];
+  for (const s of ordered) {
+    let dPath = '', prevW = null;
+    for (const [w, v] of s.pts) {
+      dPath += (prevW != null && w === prevW + 1 ? 'L' : 'M') + X(w).toFixed(1) + ' ' + Y(v).toFixed(1);
+      prevW = w;
+    }
+    if (!dPath) continue;
+    svg.append(el('svg:path', { d: dPath, fill: 'none', stroke: s.color, 'stroke-width': s.width || 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', opacity: s.dim ? 0.55 : 1 }));
+    if (!s.dim && s.pts.length) {
+      const [lw, lv] = s.pts[s.pts.length - 1];
+      svg.append(el('svg:circle', { cx: X(lw), cy: Y(lv), r: 3.5, fill: s.color, stroke: 'var(--surface)', 'stroke-width': 2 }));
+    }
+  }
+  const colored = series.filter(s => !s.dim && s.pts.length);
+  if (colored.length >= 2 && colored.length <= 4) {
+    const lbl = colored.map(s => ({ s, y: Y(s.pts[s.pts.length - 1][1]) })).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < lbl.length; i++) if (lbl[i].y - lbl[i - 1].y < 13) lbl[i].y = lbl[i - 1].y + 13;
+    for (const { s, y } of lbl)
+      svg.append(el('svg:text', { x: cw - MR - 2, y: Math.min(y + 4, H - MB - 2), 'text-anchor': 'end', 'font-size': 11, fill: 'var(--ink-2)' },
+        s.name.length > 24 ? s.name.slice(0, 23) + '…' : s.name));
+  }
+
+  const cross = el('svg:line', { y1: MT, y2: MT + ih, stroke: 'var(--axis)', 'stroke-width': 1, visibility: 'hidden' });
+  svg.append(cross);
+  const overlay = el('svg:rect', { x: ML, y: MT, width: iw, height: ih, fill: 'transparent', style: 'cursor:crosshair' });
+  svg.append(overlay);
+
+  function weekAt(evt) {
+    const r = svg.getBoundingClientRect();
+    const px = (evt.clientX - r.left) * (cw / r.width);
+    return Math.max(x0, Math.min(last, Math.round(x0 + ((px - ML) / iw) * span)));
+  }
+  overlay.addEventListener('mousemove', evt => {
+    const w = weekAt(evt);
+    cross.setAttribute('x1', X(w)); cross.setAttribute('x2', X(w));
+    cross.setAttribute('visibility', 'visible');
+    const rows = [];
+    for (const s of series) {
+      const p = s.pts.find(p2 => p2[0] === w);
+      if (p) rows.push({ name: s.name, color: s.color, v: p[1], value: opts.yFmt ? opts.yFmt(p[1]) : fmt(p[1]) });
+    }
+    rows.sort((a, b) => b.v - a.v);
+    const shown = rows.slice(0, 10);
+    if (rows.length > 10) shown.push({ name: `… +${rows.length - 10} more`, color: 'transparent', value: '' });
+    showTooltip(evt.clientX, evt.clientY, dates[w], shown);
+  });
+  overlay.addEventListener('mouseleave', () => { cross.setAttribute('visibility', 'hidden'); hideTooltip(); });
+  if (opts.onPick) overlay.addEventListener('click', evt => {
+    const w = weekAt(evt);
+    const r = svg.getBoundingClientRect();
+    const py = (evt.clientY - r.top) * (H / r.height);
+    let best = null, bd = 26;
+    for (const s of series) {
+      const p = s.pts.find(p2 => p2[0] === w);
+      if (!p) continue;
+      const d = Math.abs(Y(p[1]) - py);
+      if (d < bd) { bd = d; best = s.name; }
+    }
+    if (best) opts.onPick(best);
+  });
+  container.append(svg);
+}
+
+/* ---------- sparkline (trend cell; values also in the row, tooltip not needed) ---------- */
+function sparkline(o) {
+  const W2 = 110, H2 = 26, PAD = 2;
+  const pts = ptsOf(o, valAt);
+  if (pts.length < 2) return el('span', { class: 'note', style: 'margin:0' }, '–');
+  let min = 0, max = 0;
+  for (const [, v] of pts) { if (v > max) max = v; if (v < min) min = v; }
+  if (max === min) max = min + 1;
+  const last = nW() - 1, x0 = metricXStart(state.metric);
+  const X = w => PAD + ((w - x0) / Math.max(1, last - x0)) * (W2 - 2 * PAD);
+  const Y = v => PAD + (1 - (v - min) / (max - min)) * (H2 - 2 * PAD);
+  let d = '', prevW = null;
+  for (const [w, v] of pts) {
+    d += (prevW != null && w === prevW + 1 ? 'L' : 'M') + X(w).toFixed(1) + ' ' + Y(v).toFixed(1);
+    prevW = w;
+  }
+  const [lw, lv] = pts[pts.length - 1];
+  return el('svg:svg', { viewBox: `0 0 ${W2} ${H2}`, width: W2, height: H2, 'aria-hidden': 'true' },
+    el('svg:path', { d, fill: 'none', stroke: GRAY, 'stroke-width': 1.5, 'stroke-linejoin': 'round' }),
+    el('svg:circle', { cx: X(lw), cy: Y(lv), r: 2.5, fill: 'var(--s1)' }));
+}
+
+/* ---------- color slots (color follows entity) ---------- */
+function assignColors(map, wanted) {
+  for (const k of [...map.keys()]) if (!wanted.includes(k)) map.delete(k);
+  const used = new Set(map.values());
+  for (const k of wanted) {
+    if (map.has(k)) continue;
+    for (let s = 0; s < PALETTE.length; s++) if (!used.has(s)) { map.set(k, s); used.add(s); break; }
+  }
+  return map;
+}
+
+/* ---------- ranking section ---------- */
+function renderRankSection() {
+  const rw = state.rankWeek, m = state.metric, xStart = metricXStart(m);
+  const ranked = ranking(rw);
+  const top = ranked.slice(0, state.topN);
+  const prevRank = new Map();
+  if (rw - 1 >= xStart) ranking(rw - 1).forEach(([, o], i) => prevRank.set(o.name, i + 1));
+
+  /* chart: pinned + leaders colored, rest of top 25 dimmed gray */
+  const topNames = top.map(([, o]) => o.name);
+  const coloredNames = [...state.pinned.filter(n => byName.get(n).ser[state.mode])];
+  for (const n of topNames) { if (coloredNames.length >= 8) break; if (!coloredNames.includes(n)) coloredNames.push(n); }
+  assignColors(orgColors, coloredNames.slice(0, 8));
+  const series = [];
+  for (const n of topNames.slice(0, 25)) if (!orgColors.has(n))
+    series.push({ name: n, color: GRAY, pts: ptsOf(byName.get(n), valAt), width: 1.5, dim: true });
+  for (const [n, slot] of orgColors)
+    series.push({ name: n, color: PALETTE[slot], pts: ptsOf(byName.get(n), valAt) });
+  renderChart($('rankChart'), series, { xStart, height: 320, yKind: state.scale, yFmt: fmt, rankMark: rw, onPick: togglePin });
+
+  $('rankTitle').textContent = `Top ${state.topN} accounts — ${MODE().label.toLowerCase()}`;
+  $('rankCaption').textContent =
+    `Ranked by ${METRICS[m].name} at ${MODE().dates[rw]} · chart shows the top 8` +
+    (state.pinned.length ? ` + ${state.pinned.length} pinned` : '') + ', top 25 in gray.';
+
+  $('rankLegend').replaceChildren(...[...orgColors.keys()].map(n =>
+    el('span', { class: 'lg click', onclick: () => togglePin(n), title: state.pinned.includes(n) ? 'Unpin' : 'Pin' },
+      el('span', { class: 'chip', style: `background:${PALETTE[orgColors.get(n)]}` }), n,
+      state.pinned.includes(n) ? el('span', { class: 'x' }, '×') : '')));
+
+  /* table */
+  const q = state.filter.toLowerCase();
+  const head = el('tr', {},
+    ...['#', 'Δ rank', 'account', 'type', 'country', METRICS[m].name, 'vs prev wk', 'share of hub', 'trend', 'followers']
+      .map((h, i) => el('th', { class: [5, 6, 7, 9].includes(i) ? 'num' : '' }, h)));
+  const hubTotal = hubVal(rw);
+  const rows = [];
+  top.forEach(([v, o], i) => {
+    if (q && !o.nameLow.includes(q)) return;
+    const rank = i + 1, pr = prevRank.get(o.name);
+    const dr = pr == null ? el('span', { class: 'drk new' }, 'new')
+      : pr === rank ? el('span', { class: 'drk same' }, '·')
+      : pr > rank ? el('span', { class: 'drk up' }, '▲' + (pr - rank))
+      : el('span', { class: 'drk down' }, '▼' + (rank - pr));
+    const pv = valAt(o, rw - 1);
+    let vsPrev;
+    if (pv == null) vsPrev = el('span', { class: 'drk same' }, '–');
+    else if (m !== 'lkd') {
+      const pct = pv ? (v - pv) / pv : null;
+      vsPrev = pct == null ? el('span', { class: 'drk same' }, '–')
+        : el('span', { class: 'drk ' + (pct >= 0 ? 'up' : 'down') }, (pct >= 0 ? '+' : '') + (pct * 100).toFixed(1) + '%');
+    } else {
+      vsPrev = el('span', { class: 'drk ' + (v - pv >= 0 ? 'up' : 'down') }, fmtSigned(v - pv));
+    }
+    rows.push(el('tr', { class: state.pinned.includes(o.name) ? 'pinned' : '', onclick: () => togglePin(o.name) },
+      el('td', { class: 'num' }, rank),
+      el('td', {}, dr),
+      el('td', {}, el('a', { href: 'https://huggingface.co/' + encodeURIComponent(o.name), target: '_blank', rel: 'noopener',
+        onclick: e => e.stopPropagation() }, o.name)),
+      el('td', {}, el('span', { class: 'tagpill' }, o.type)),
+      el('td', {}, o.country === 'unknown' ? el('span', { class: 'drk same' }, 'unknown') : o.country),
+      el('td', { class: 'num' }, fmt(v)),
+      el('td', { class: 'num' }, vsPrev),
+      el('td', { class: 'num' }, hubTotal ? fmtPct(v / hubTotal) : '–'),
+      el('td', {}, sparkline(o)),
+      el('td', { class: 'num' }, o.followers != null ? fmt(o.followers) : '–')));
+  });
+  $('rankList').replaceChildren(el('table', {}, el('thead', {}, head), el('tbody', {}, rows)));
+  $('pinHint').textContent = q
+    ? `${rows.length} of ${top.length} shown accounts match "${state.filter}".`
+    : 'Click a row or a line to pin an account to the chart.';
+}
+function togglePin(name) {
+  const i = state.pinned.indexOf(name);
+  if (i >= 0) state.pinned.splice(i, 1); else state.pinned.push(name);
+  renderRankSection();
+}
+
+/* ---------- concentration section ---------- */
+function cohortSums(names, getter) {
+  const vals = [];
+  for (let w = 0; w < nW(); w++) {
+    let s = null;
+    for (const n of names) { const v = getter(byName.get(n), w); if (v != null) s = (s || 0) + v; }
+    vals.push(s);
+  }
+  return vals;
+}
+function weeklyTopSums(getter, xStart) {
+  const vals = new Array(nW()).fill(null);
+  for (let w = xStart; w < nW(); w++) {
+    const r = ranking(w, getter);
+    let s = null;
+    for (const [v] of r.slice(0, state.topN)) s = (s || 0) + v;
+    vals[w] = s;
+  }
+  return vals;
+}
+function renderShareSection() {
+  const rw = state.rankWeek, N = state.topN, m = state.metric;
+  const cohort = ranking(rw).slice(0, N).map(([, o]) => o.name);
+
+  const fixDl = cohortSums(cohort, dlAt);
+  const fixLkd = cohortSums(cohort, lkdAt);
+  const dynDl = weeklyTopSums(dlAt, 0);
+  const dynLkd = weeklyTopSums(lkdAt, 1);
+
+  /* h > 0: a share of a week where the hub lost likes overall is meaningless */
+  const sharePts = (sums, hubGetter, xStart) => {
+    const pts = [];
+    for (let w = xStart; w < nW(); w++) {
+      const h = hubGetter(w);
+      if (sums[w] != null && h > 0) pts.push([w, (sums[w] / h) * 100]);
+    }
+    return pts;
+  };
+
+  const shareDlNow = hubDl(rw) ? (fixDl[rw] ?? 0) / hubDl(rw) : null;
+  const shareLkdNow = hubLkd(rw) ? (fixLkd[rw] ?? 0) / hubLkd(rw) : null;
+  const prev4 = rw - 4;
+  const tiles = [
+    { label: 'Accounts on hub', v: MODE().hub.n_auth[rw], p: prev4 >= 0 ? MODE().hub.n_auth[prev4] : null, f: fmt },
+    { label: 'Hub downloads (30d)', v: hubDl(rw), p: prev4 >= 0 ? hubDl(prev4) : null, f: fmt },
+    { label: `Top ${N} share of downloads`, v: shareDlNow, p: null, f: fmtPct },
+    { label: 'Hub likes gained this wk', v: hubLkd(rw), p: null, f: fmtSigned },
+    { label: `Top ${N} share of like gains`, v: shareLkdNow, p: null, f: fmtPct },
+  ];
+  $('shareTiles').replaceChildren(...tiles.map(t => {
+    let delta = null;
+    if (t.v != null && t.p != null && t.p !== 0) delta = (t.v - t.p) / t.p;
+    return el('div', { class: 'tile' },
+      el('div', { class: 'tlabel' }, t.label),
+      el('div', { class: 'tvalue' }, t.f(t.v)),
+      el('div', { class: 'tdelta' }, delta == null ? ' ' :
+        [el('span', { class: delta >= 0 ? 'up' : 'down' }, (delta >= 0 ? '▲ +' : '▼ ') + (delta * 100).toFixed(1) + '%'),
+         ' vs 4 wks earlier']));
+  }));
+
+  /* perspective tile: download events weight a 5 KB CSV like a 500 GB corpus —
+     re-weight by dataset size (datasets hub only; size data exists for one week) */
+  let volNote = '';
+  if (state.mode === 'ds' && DATA.size) {
+    const S = DATA.size, sw = MODE().dates.indexOf(S.week);
+    if (sw >= metricXStart(m)) {
+      let bytes = 0, ev = 0;
+      for (const [, o] of ranking(sw).slice(0, N)) { bytes += S.acct[o.name] || 0; ev += dlAt(o, sw) || 0; }
+      const bShare = S.hub_bytes ? bytes / S.hub_bytes : null;
+      const eShare = hubDl(sw) ? ev / hubDl(sw) : null;
+      const volTile = el('div', { class: 'tile' },
+        el('div', { class: 'tlabel' }, `Top ${N} share of data volume (est.)`),
+        el('div', { class: 'tvalue' }, fmtPct(bShare)),
+        el('div', { class: 'tdelta' }, `vs ${fmtPct(eShare)} of download events · at ${S.week}`));
+      const tilesEl = $('shareTiles');
+      tilesEl.insertBefore(volTile, tilesEl.children[3] || null);  // right beside the downloads-share tile
+      volNote = ` Data volume ≈ 30-day downloads × dataset size at ${S.week} ` +
+        `(top ${N} ≈ ${fmtBytes(bytes)} of ${fmtBytes(S.hub_bytes)} hub-wide; size known for ` +
+        `${fmtPct(S.dl_cov)} of download events) — an upper bound that assumes every download pulls the full dataset.`;
+    }
+  }
+
+  /* by-country tile: composition of the ranked cohort's metric (countries are
+     classified for the latest top-500 dataset accounts; the rest is "unknown") */
+  {
+    const byC = new Map();
+    let tot = 0;
+    for (const [v, o] of ranking(rw).slice(0, N)) {
+      if (v <= 0) continue;  // negative like gains would break composition shares
+      byC.set(o.country, (byC.get(o.country) || 0) + v);
+      tot += v;
+    }
+    if (tot > 0) {
+      const unknown = byC.get('unknown') || 0;
+      byC.delete('unknown');
+      const sorted = [...byC.entries()].sort((a, b) => b[1] - a[1]);
+      const other = sorted.slice(5).reduce((s, [, v]) => s + v, 0);
+      const rows = [...sorted.slice(0, 5).map(([c, v]) => [c, v, false]),
+        ...(other > 0 ? [['other', other, true]] : []),
+        ...(unknown > 0 ? [['unknown', unknown, true]] : [])];
+      const maxV = Math.max(...rows.map(r => r[1]));
+      $('shareTiles').append(el('div', { class: 'tile' },
+        el('div', { class: 'tlabel' }, `Top ${N} ${METRICS[m].name} by country`),
+        ...rows.map(([c, v, gray]) => el('div', { class: 'crow' },
+          el('span', { class: 'cc' }, c),
+          el('div', { class: 'cbarw' }, el('div', { class: 'cbar' + (gray ? ' gray' : ''), style: `width:${(v / maxV) * 100}%` })),
+          el('span', { class: 'cpc' }, fmtPct(v / tot))))));
+    }
+  }
+
+  $('shareCaption').textContent =
+    `Share of hub-wide totals driven by the top ${N} accounts (ranked by ${METRICS[m].name} at ${MODE().dates[rw]}).`;
+  const mkBox = title => { const c = el('div', { class: 'chartbox' }, el('h3', {}, title)); const ch = el('div', { class: 'chart' }); c.append(ch); return [c, ch]; };
+  const [c1, ch1] = mkBox(`Share of hub downloads (30d) from top ${N} accounts`);
+  const [c2, ch2] = mkBox(`Share of hub weekly like gains from top ${N} accounts`);
+  $('shareCharts').replaceChildren(c1, c2);
+  const pctFmt = v => v.toFixed(0) + '%';
+  const FIX = `Ranked top ${N}`, DYN = `Weekly top ${N}`;
+  renderChart(ch1, [
+    { name: FIX, color: PALETTE[0], pts: sharePts(fixDl, hubDl, 0) },
+    { name: DYN, color: PALETTE[1], pts: sharePts(dynDl, hubDl, 0) },
+  ], { xStart: 0, height: 190, yFmt: pctFmt, rankMark: rw });
+  renderChart(ch2, [
+    { name: FIX, color: PALETTE[0], pts: sharePts(fixLkd, hubLkd, 1) },
+    { name: DYN, color: PALETTE[1], pts: sharePts(dynLkd, hubLkd, 1) },
+  ], { xStart: 1, height: 190, yFmt: pctFmt, rankMark: rw });
+  $('shareLegend').replaceChildren(
+    el('span', { class: 'lg' }, el('span', { class: 'linechip', style: `background:${PALETTE[0]}` }), FIX + ' — fixed set, the accounts listed above'),
+    el('span', { class: 'lg' }, el('span', { class: 'linechip', style: `background:${PALETTE[1]}` }), DYN + ' — re-picked per week by the same metric'));
+  $('shareNote').textContent =
+    `Weekly top-${N} cohorts are exact: the embedded pool holds every account ever in a weekly top ${DATA.pool} ` +
+    'by either metric. Weekly like gains can be negative when likes are withdrawn; weeks where the hub lost ' +
+    'likes overall are omitted from the like-gain share chart.' + volNote;
+}
+
+/* ---------- sankey: share of repos (left) vs share of metric (right) ----------
+   color follows the entity: one fixed slot per org type, gray = rest of hub */
+const TYPE_COLORS = {
+  company: 'var(--s1)', community: 'var(--s2)', 'non-profit': 'var(--s3)',
+  university: 'var(--s4)', individual: 'var(--s5)', classroom: 'var(--s6)', government: 'var(--s7)',
+};
+function unitLabel() { return state.mode === 'ds' ? 'datasets' : state.mode === 'md' ? 'models' : 'repos'; }
+
+function renderSankeySection() {
+  const rw = state.rankWeek, N = state.topN, m = state.metric;
+  const box = $('sankeyChart'), unit = unitLabel(), mName = METRICS[m].name;
+  $('sankeyTitle').textContent = `Few accounts, most of the ${m === 'lkd' ? 'like gains' : 'downloads'}`;
+  $('sankeyCaption').textContent =
+    `The top ${N} accounts at ${MODE().dates[rw]}, split by organisation type, against everyone else. ` +
+    `Band width on the left = share of all ${unit} on the hub; on the right = share of ${mName}.`;
+  $('sankeyLegend').replaceChildren();
+  $('sankeyNote').textContent = '';
+  const hubN = MODE().hub.n_repo[rw], hubV = hubVal(rw);
+  if (!hubN || hubV == null || hubV <= 0) {
+    box.replaceChildren(el('p', { class: 'note' },
+      'No positive hub total this week (the hub lost likes overall) — pick another week or metric.'));
+    return;
+  }
+
+  /* group the current top N by org type */
+  const groups = new Map();
+  for (const [v, o] of ranking(rw).slice(0, N)) {
+    let g = groups.get(o.type);
+    if (!g) groups.set(o.type, g = { name: o.type, color: TYPE_COLORS[o.type] || 'var(--s8)', accounts: 0, n: 0, v: 0 });
+    g.accounts++; g.n += nAt(o, rw) || 0; g.v += v;
+  }
+  const rows = [...groups.values()].sort((a, b) => b.v - a.v);
+  let clamped = false;
+  for (const g of rows) if (g.v < 0) { g.v = 0; clamped = true; }
+  const cN = rows.reduce((s, g) => s + g.n, 0), cV = rows.reduce((s, g) => s + g.v, 0);
+  rows.push({ name: 'rest of hub', color: GRAY, accounts: null,
+    n: Math.max(0, hubN - cN), v: Math.max(0, hubV - cV), rest: true });
+
+  /* layout: two node columns, parallel ribbons (same order both sides, no crossings) */
+  box.replaceChildren();
+  const cw = box.clientWidth || 900;
+  const H = 430, MT = 26, MB = 10, LBL = Math.min(250, Math.floor(cw * 0.27)), NW = 12;
+  const XL = LBL, XR = cw - LBL - NW, ih = H - MT - MB;
+  const GAP = 2, avail = ih - GAP * (rows.length - 1), MINH = 3;
+  const totN = rows.reduce((s, g) => s + g.n, 0) || 1, totV = rows.reduce((s, g) => s + g.v, 0) || 1;
+  let yL = MT, yR = MT;
+  for (const g of rows) {
+    g.hL = Math.max(MINH, (g.n / totN) * avail); g.y0L = yL; yL += g.hL + GAP;
+    g.hR = Math.max(MINH, (g.v / totV) * avail); g.y0R = yR; yR += g.hR + GAP;
+  }
+  const svg = el('svg:svg', { viewBox: `0 0 ${cw} ${H}`, width: cw, height: H });
+  svg.append(el('svg:text', { x: XL + NW, y: 14, 'text-anchor': 'end', 'font-size': 11.5, 'font-weight': 600, fill: 'var(--ink-2)' }, `share of ${unit}`));
+  svg.append(el('svg:text', { x: XR, y: 14, 'text-anchor': 'start', 'font-size': 11.5, 'font-weight': 600, fill: 'var(--ink-2)' }, `share of ${mName}`));
+
+  const mx = (XL + NW + XR) / 2;
+  const marks = [];
+  for (const g of rows) {
+    const y1L = g.y0L + g.hL, y1R = g.y0R + g.hR;
+    const ribbon = el('svg:path', {
+      d: `M ${XL + NW} ${g.y0L} C ${mx} ${g.y0L} ${mx} ${g.y0R} ${XR} ${g.y0R} L ${XR} ${y1R} C ${mx} ${y1R} ${mx} ${y1L} ${XL + NW} ${y1L} Z`,
+      fill: g.color, opacity: 0.3,
+    });
+    const nodeL = el('svg:rect', { x: XL, y: g.y0L, width: NW, height: g.hL, rx: 1.5, fill: g.color });
+    const nodeR = el('svg:rect', { x: XR, y: g.y0R, width: NW, height: g.hR, rx: 1.5, fill: g.color });
+    svg.append(ribbon, nodeL, nodeR);
+    for (const mk of [ribbon, nodeL, nodeR]) {
+      mk.addEventListener('pointermove', evt => {
+        ribbon.setAttribute('opacity', 0.55);
+        showTooltip(evt.clientX, evt.clientY, g.rest ? 'Rest of hub' : `${g.name} — in top ${N}`, [
+          ...(g.accounts != null ? [{ name: 'accounts', color: g.color, value: fmt(g.accounts) }] : []),
+          { name: unit, color: g.color, value: `${fmt(g.n)} (${fmtPct(g.n / totN)})` },
+          { name: mName, color: g.color, value: `${fmt(g.v)} (${fmtPct(g.v / totV)})` },
+        ]);
+      });
+      mk.addEventListener('pointerleave', () => { ribbon.setAttribute('opacity', 0.3); hideTooltip(); });
+    }
+    marks.push(g);
+  }
+  /* labels beside the nodes, cascaded so tiny bands never overlap */
+  const cascade = key => {
+    const lbl = marks.map(g => ({ g, y: g['y0' + key] + g['h' + key] / 2 + 4 })).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < lbl.length; i++) if (lbl[i].y - lbl[i - 1].y < 13) lbl[i].y = lbl[i - 1].y + 13;
+    return lbl;
+  };
+  for (const { g, y } of cascade('L'))
+    svg.append(el('svg:text', { x: XL - 8, y, 'text-anchor': 'end', 'font-size': 11, fill: 'var(--ink-2)' },
+      `${g.name} · ${fmt(g.n)} (${fmtPct(g.n / totN)})`));
+  for (const { g, y } of cascade('R'))
+    svg.append(el('svg:text', { x: XR + NW + 8, y, 'text-anchor': 'start', 'font-size': 11, fill: 'var(--ink-2)' },
+      `${fmt(g.v)} (${fmtPct(g.v / totV)})`));
+  box.append(svg);
+
+  $('sankeyLegend').replaceChildren(...marks.map(g =>
+    el('span', { class: 'lg' }, el('span', { class: 'chip', style: `background:${g.color}` }),
+      g.rest ? 'rest of hub' : `${g.name} (${g.accounts})`)));
+  $('sankeyNote').textContent =
+    `Bands thinner than ${MINH}px are drawn at ${MINH}px so they stay visible — hover any band for exact values.` +
+    (clamped ? ' Org types whose top accounts lost likes this week are clamped to zero width on the right.' : '');
+}
+
+/* ---------- controls ---------- */
+function seg(container, options, get, set) {
+  container.replaceChildren(...options.map(([val, label]) =>
+    el('button', { class: get() === val ? 'on' : '', onclick: () => { set(val); renderAll(); } }, label)));
+}
+function renderControls() {
+  seg($('segMode'), Object.entries(DATA.modes).map(([k, m]) => [k, m.label]), () => state.mode, v => {
+    const curDate = DATA.modes[state.mode].dates[state.rankWeek];
+    state.mode = v;
+    const idx = DATA.modes[v].dates.indexOf(curDate);
+    state.rankWeek = idx >= 0 ? idx : DATA.modes[v].dates.length - 1;
+    clampWeek();
+  });
+  seg($('segMetric'), Object.entries(METRICS).map(([k, c]) => [k, c.btn]), () => state.metric, v => { state.metric = v; clampWeek(); });
+  seg($('segTopN'), TOPN_OPTIONS.map(n => [n, 'Top ' + n]), () => state.topN, v => { state.topN = v; });
+  seg($('segScale'), [['linear', 'linear'], ['symlog', 'symlog']], () => state.scale, v => { state.scale = v; });
+
+  const sel = $('selWeek');
+  sel.replaceChildren(...MODE().dates.map((d, i) =>
+    el('option', { value: i, ...(i < metricXStart(state.metric) ? { disabled: '' } : {}) }, d)));
+  sel.value = state.rankWeek;
+
+  const md = DATA.modes;
+  $('modeNote').textContent = state.mode === 'cb'
+    ? `Combined = datasets + models per account, on the ${md.cb.dates.length} weeks both hubs share (models end ${md.md.dates.at(-1)}).`
+    : state.mode === 'md'
+    ? `Models snapshots end ${md.md.dates.at(-1)} (datasets continue to ${md.ds.dates.at(-1)}).`
+    : '';
+}
+function clampWeek() {
+  state.rankWeek = Math.max(metricXStart(state.metric), Math.min(state.rankWeek, nW() - 1));
+}
+
+/* ---------- render root ---------- */
+function renderAll() {
+  renderControls();
+  renderRankSection();
+  renderShareSection();
+  renderSankeySection();
+}
+
+/* ---------- init ---------- */
+(function init() {
+  const md = DATA.modes;
+  $('hdrRange').textContent = DATA.dates[0] + ' → ' + DATA.dates[DATA.dates.length - 1];
+  $('hdrBuilt').textContent = DATA.built;
+  $('hdrPool').textContent = DATA.pool;
+  $('ftModes').textContent = `datasets ${md.ds.dates.length} wks to ${md.ds.dates.at(-1)}, models ${md.md.dates.length} wks to ${md.md.dates.at(-1)}, combined ${md.cb.dates.length} wks`;
+
+  $('selWeek').addEventListener('change', e => { state.rankWeek = +e.target.value; renderAll(); });
+  let fT = null;
+  $('inpFilter').addEventListener('input', e => {
+    clearTimeout(fT);
+    fT = setTimeout(() => { state.filter = e.target.value.trim(); renderRankSection(); }, 200);
+  });
+  let rsT = null;
+  addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(renderAll, 200); });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
+
+  renderAll();
+})();
+</script>
+</body>
+</html>

@@ -14,3 +14,9 @@ data/hf_datasets_historic/
 
 # Generated viewer (regenerable from hf_datasets_build_viewer.py; template.html is committed)
 viewer/hf_datasets_viewer.html
+
+# Generated org dashboard (regenerable from hf_orgs_build_dashboard.py; org_dashboard_template.html is committed)
+viewer/hf_orgs_dashboard.html
+
+# Generated org-trends viewer (regenerable from hf_org_trends_build_viewer.py; org_template.html is committed)
+viewer/hf_org_trends_viewer.html

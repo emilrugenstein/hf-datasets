@@ -48,8 +48,21 @@ OUT_HTML = Path("viewer/hf_org_trends_viewer.html")
 
 ALLTIME_START = "2025-02-26"  # downloadsAllTime is null before this snapshot
 TOP_N = 10                    # concentration overlay: top-N repos/orgs per org type
-TOP_POOL = 500                # per-week per-metric author pool for the embedded orgs
+TOP_POOL = 2000               # per-week per-metric author pool for the embedded orgs
                               # (>= the largest UI "top N accounts" option, so client-side ranking is exact)
+# Histogram bin edges for the per-org drill-down distributions (latest snapshot).
+# bin index = number of edges <= value; keep the template's label arrays in sync.
+HIST_EDGES = {
+    "hs": [10.0 ** k for k in range(3, 13)],           # mainSize bytes: <1KB, decades, >=1TB (11 bins)
+    "hl": [1, 10, 100, 1_000, 10_000],                 # likes (6 bins)
+    "hd": [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000],  # all-time downloads (8 bins)
+}
+HIST_COLS = {"hs": "mainSize", "hl": "likes", "hd": "downloadsAllTime"}
+
+# Rank buckets for the size tile's accounts filter — must match the UI dropdown.
+# Per week/metric the size sums are stored per bucket; the client combines a
+# prefix of buckets into exact cohort statistics for any of these N values.
+TOP_ACCOUNT_BUCKETS = [10, 100, 500, 1000, 2000]
 
 # Canonical org-type order; colors live in the template keyed by these names.
 ORG_TYPES = ["company", "university", "non-profit", "community", "classroom", "government", "individual"]
@@ -148,12 +161,11 @@ def _org_level_per_type(df: pl.DataFrame, metric: str | None, n: int) -> tuple[l
     return topn_sum, top3
 
 
-def _size_stats(df: pl.DataFrame, has_alltime: bool) -> dict[str, dict]:
-    """Per org type: count and mean/SD of log10(rows) from size_categories tags,
-    unweighted plus weighted by each metric (weighted SD via E[x^2] - mean^2)."""
-    s = (
+def _size_frame(df: pl.DataFrame) -> pl.DataFrame:
+    """(author, org_type, weights, x=log10 rows) for datasets with a size_categories tag."""
+    return (
         df.select(
-            "org_type", "downloads", "downloadsAllTime", "likes",
+            "author", "org_type", "downloads", "downloadsAllTime", "likes",
             pl.col("tags").list.eval(pl.element().filter(pl.element().str.starts_with("size_categories:")))
             .list.first().alias("sc"),
         )
@@ -161,19 +173,70 @@ def _size_stats(df: pl.DataFrame, has_alltime: bool) -> dict[str, dict]:
         .with_columns(pl.col("sc").str.strip_prefix("size_categories:").replace_strict(SIZE_LOG10_MID, default=None).alias("x"))
         .drop_nulls("x")
     )
-    return _log_stats_per_type(s, has_alltime)
 
 
-def _bytes_stats(df: pl.DataFrame, has_alltime: bool) -> dict[str, dict]:
-    """Same statistics on log10(mainSize) — repo size in bytes, min files from ~2026-07 only."""
+def _bytes_frame(df: pl.DataFrame) -> pl.DataFrame | None:
+    """Same shape with x=log10(mainSize) — repo bytes, min files from ~2026-07 only."""
     if df["mainSize"].null_count() == len(df):
-        return {}
-    s = (
-        df.select("org_type", "downloads", "downloadsAllTime", "likes", "mainSize")
+        return None
+    return (
+        df.select("author", "org_type", "downloads", "downloadsAllTime", "likes", "mainSize")
         .filter(pl.col("mainSize") > 0)
         .with_columns(pl.col("mainSize").log(10).alias("x"))
     )
-    return _log_stats_per_type(s, has_alltime)
+
+
+def _author_ranks(by_author: pl.DataFrame, metrics: list[str]) -> pl.DataFrame:
+    """Per-author rank per metric: a_<m> over all accounts, o_<m> over non-individuals only."""
+    ranks = by_author.select(
+        "author",
+        *[pl.col(m).fill_null(0).rank(method="ordinal", descending=True).alias(f"a_{m}") for m in metrics],
+    )
+    org_only = by_author.filter(pl.col("org_type") != "individual").select(
+        "author",
+        *[pl.col(m).fill_null(0).rank(method="ordinal", descending=True).alias(f"o_{m}") for m in metrics],
+    )
+    return ranks.join(org_only, on="author", how="left")
+
+
+def _bucket_size_stats(s: pl.DataFrame, ranks: pl.DataFrame, has_alltime: bool) -> dict:
+    """Size sums per (rank bucket, org type) for the accounts filter.
+
+    For each variant (a = all accounts, o = organisations only) and metric, rows
+    are bucketed by their author's rank (TOP_ACCOUNT_BUCKETS) and summed:
+    (count, sum x, sum x^2, sum w, sum w*x, sum w*x^2) — additive, so the client
+    combines a bucket prefix into exact top-N mean/SD, unweighted and weighted.
+    """
+    metrics = [("dl", "downloads"), ("lk", "likes")] + ([("dlat", "downloadsAllTime")] if has_alltime else [])
+    sj = s.join(ranks, on="author", how="left")
+    out: dict = {}
+    for variant in ("a", "o"):
+        vout: dict = {}
+        for key, col in metrics:
+            rk = pl.col(f"{variant}_{key}")
+            bkt = pl.when(rk <= TOP_ACCOUNT_BUCKETS[0]).then(0)
+            for i in range(1, len(TOP_ACCOUNT_BUCKETS)):
+                bkt = bkt.when(rk <= TOP_ACCOUNT_BUCKETS[i]).then(i)
+            w = pl.col(col).fill_null(0)
+            g = (
+                sj.with_columns(bkt.otherwise(None).alias("bkt"))
+                .drop_nulls("bkt")
+                .group_by("bkt", "org_type")
+                .agg(
+                    pl.len().alias("c"),
+                    pl.col("x").sum().alias("sx"),
+                    (pl.col("x") ** 2).sum().alias("sx2"),
+                    w.sum().alias("sw"),
+                    (w * pl.col("x")).sum().alias("swx"),
+                    (w * pl.col("x") ** 2).sum().alias("swx2"),
+                )
+            )
+            vout[key] = {
+                (int(r["bkt"]), r["org_type"]): (r["c"], r["sx"], r["sx2"], r["sw"], r["swx"], r["swx2"])
+                for r in g.iter_rows(named=True)
+            }
+        out[variant] = vout
+    return out
 
 
 def _log_stats_per_type(s: pl.DataFrame, has_alltime: bool) -> dict[str, dict]:
@@ -229,19 +292,28 @@ def scan_week(df: pl.DataFrame, seen: pl.DataFrame | None, top_pool: int, top_n:
         week["c_ds_dlat"] = week["c_org_dlat"] = [None] * len(ORG_TYPES)
         week["top3_dlat"] = {}
     _, week["top3_n"] = _org_level_per_type(df, None, top_n)
-    week["size"] = _size_stats(df, has_alltime)
-    week["size_b"] = _bytes_stats(df, has_alltime)
 
     by_author = df.group_by("author").agg(
         pl.col("downloads").sum().alias("dl"),
         pl.col("downloadsAllTime").sum().alias("dlat"),
         pl.col("likes").sum().alias("lk"),
         pl.len().alias("n"),
+        pl.col("org_type").first(),
     )
     pool = set()
     for m in ("dl", "lk", "n") + (("dlat",) if has_alltime else ()):
         pool |= set(by_author.top_k(min(top_pool, len(by_author)), by=m)["author"])
     week["pool"] = pool
+
+    s_rows = _size_frame(df)
+    s_bytes = _bytes_frame(df)
+    ranks = _author_ranks(by_author, ["dl", "lk"] + (["dlat"] if has_alltime else []))
+    week["size"] = _log_stats_per_type(s_rows, has_alltime)
+    week["size_b"] = _log_stats_per_type(s_bytes, has_alltime) if s_bytes is not None else {}
+    week["size_f"] = {
+        "r": _bucket_size_stats(s_rows, ranks, has_alltime),
+        "b": _bucket_size_stats(s_bytes, ranks, has_alltime) if s_bytes is not None else {},
+    }
     return week, seen
 
 
@@ -302,6 +374,28 @@ def collect_org_series(snapshots: list[tuple[str, Path]], selected: set[str], or
     return records
 
 
+def collect_org_hists(latest_path: Path, selected: set[str]) -> dict[str, dict]:
+    """Per pooled author: histograms over its repos in the latest snapshot
+    (dataset size in bytes, likes, all-time downloads), for the drill-down."""
+    available = pl.scan_parquet(latest_path).collect_schema().names()
+    cols = ["author"] + [c for c in {*HIST_COLS.values()} if c in available]
+    sel = pl.Series("author", sorted(selected)).implode()
+    df = pl.scan_parquet(latest_path).filter(pl.col("author").is_in(sel)).select(cols).collect()
+    hists: dict[str, dict] = {}
+    for key, col in HIST_COLS.items():
+        if col not in df.columns:
+            continue
+        edges = HIST_EDGES[key]
+        sub = df.select("author", col).drop_nulls(col)
+        binned = sub.with_columns(
+            pl.sum_horizontal([(pl.col(col) >= e).cast(pl.Int32) for e in edges]).alias("bin")
+        ).group_by("author", "bin").agg(pl.len().alias("c"))
+        for r in binned.iter_rows(named=True):
+            arr = hists.setdefault(r["author"], {}).setdefault(key, [0] * (len(edges) + 1))
+            arr[r["bin"]] = r["c"]
+    return hists
+
+
 def build_entity(entity: str, args) -> dict | None:
     snapshots = list_snapshots(entity)
     if not snapshots:
@@ -320,12 +414,18 @@ def build_entity(entity: str, args) -> dict | None:
         df = read_week(path, orgs)
         week, seen = scan_week(df, seen, args.top_pool, args.top_n)
         selected |= week.pop("pool")
+        # every per-type top-3 author (pie slices) gets an embedded series, even
+        # when a small type's top accounts miss the global top-pool cut
+        for m in ("dl", "lk", "dlat", "n"):
+            for entries in week[f"top3_{m}"].values():
+                selected.update(author for author, _ in entries)
         weeks.append(week)
         log.info("[%s] pass 1: n=%d pooled authors so far=%d", date_str, week["sig"][0], len(selected))
 
     frozen = detect_frozen(entity, dates, weeks, full_build=not args.quick)
 
     records = collect_org_series(snapshots, selected, orgs)
+    hists = collect_org_hists(snapshots[-1][1], selected)
 
     # by_type[key][type_idx][week] — kept exact (tiny) so notebook numbers match 1:1
     by_type_keys = ["dl", "dlat", "lk", "n", "new", "c_ds_dl", "c_ds_lk", "c_ds_dlat", "c_org_dl", "c_org_lk", "c_org_dlat"]
@@ -362,6 +462,32 @@ def build_entity(entity: str, args) -> dict | None:
     size = {k: [[size_val(w, "size", k, t) for w in weeks] for t in ORG_TYPES] for k in size_keys}
     size_b = {k: [[size_val(w, "size_b", k, t) for w in weeks] for t in ORG_TYPES] for k in size_keys}
 
+    # size_f[measure][variant][metric][bucket][type][week] -> [c, sx, sx2, sw, swx, swx2] | null
+    def rsig(v, sig=4):
+        if v is None or v == 0:
+            return 0
+        return round(v, sig - int(math.floor(math.log10(abs(v)))) - 1)
+
+    def bucket_cell(w, measure, variant, m, b, t):
+        cells = (w["size_f"].get(measure, {}).get(variant) or {}).get(m)
+        cell = cells.get((b, t)) if cells else None
+        if not cell:
+            return None
+        c, sx, sx2, sw, swx, swx2 = cell
+        return [int(c), round(sx, 1), round(sx2, 1), rsig(sw), rsig(swx), rsig(swx2)]
+
+    size_f = {
+        measure: {
+            variant: {
+                m: [[[bucket_cell(w, measure, variant, m, b, t) for w in weeks] for t in ORG_TYPES]
+                    for b in range(len(TOP_ACCOUNT_BUCKETS))]
+                for m in ("dl", "lk", "dlat")
+            }
+            for variant in ("a", "o")
+        }
+        for measure in ("r", "b")
+    }
+
     org_meta = {r["author"]: (r["csv_type"], r["followers"]) for r in orgs.filter(pl.col("author").is_in(sorted(selected))).iter_rows(named=True)}
     type_index = {t: i for i, t in enumerate(ORG_TYPES)}
     org_rows = []
@@ -375,8 +501,10 @@ def build_entity(entity: str, args) -> dict | None:
         dlat_start, dlat_vals = trim_series(rec["dlat"])
         lk_start, lk_vals = trim_series(rec["lk"])
         n_start, n_vals = trim_series(rec["n"])
+        h = hists.get(author, {})
         org_rows.append([author, type_index[org_type], followers,
-                         dl_start, dl_vals, lk_start, lk_vals, n_start, n_vals, dlat_start, dlat_vals])
+                         dl_start, dl_vals, lk_start, lk_vals, n_start, n_vals, dlat_start, dlat_vals,
+                         h.get("hs"), h.get("hl"), h.get("hd")])
 
     return {
         "label": ENTITY_LABELS.get(entity, entity),
@@ -389,6 +517,8 @@ def build_entity(entity: str, args) -> dict | None:
         "top3_names": top3_names,
         "size": size,
         "size_b": size_b,
+        "size_f": size_f,
+        "acc_buckets": TOP_ACCOUNT_BUCKETS,
         "orgs": org_rows,
     }
 

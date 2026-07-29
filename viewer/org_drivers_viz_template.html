@@ -1,0 +1,309 @@
+<!doctype html><html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who drives the Hugging Face Hub</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root { --breakpoint-compact: 500px; }            /* MUST equal BREAKPOINT_COMPACT in JS */
+  html,body { margin:0; height:100vh; width:100vw; overflow:hidden; color:#0f172a;
+    font-family: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Helvetica,Arial,sans-serif; }
+  .viz-grid { display:grid; height:100vh; box-sizing:border-box; padding-bottom:clamp(8px,2vh,18px);
+    grid-template-rows:17fr 1fr 1fr 1fr; grid-template-columns:1fr 1fr; }   /* rebuilt by applyContainerVisibility() */
+  #container1 { grid-column:1 / -1; min-height:0; } #viz { width:100%; height:100%; }
+  /* control row: sits under the chart, above the legend */
+  #container5 { grid-column:1 / -1; display:flex; align-items:center; justify-content:center;
+    gap:clamp(6px,1vw,12px); min-width:0; overflow:hidden; }
+  #container2 { grid-column:1 / -1; }               /* legend */
+  #legend { height:100%; display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
+    gap:2px 16px; font-size:clamp(9px,1.4vw,13px); font-weight:600; color:#475569; }
+  #legend .chip { display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+  /* source (left): width-scaled, vertically centred, ellipsised so a long source never wraps the row */
+  #container3 { font-size:clamp(5px,1.6vw,16px); display:flex; align-items:center; justify-content:flex-start;
+    padding:0 20px; overflow:hidden; min-width:0; }
+  #container3 #source-text { font-weight:600; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  #container3 #source-text a { color:#2756d3; text-decoration:underline; }
+  /* logo (right): fills the footer row height */
+  #container4 { display:flex; justify-content:flex-end; align-items:center; padding:0 20px; overflow:hidden; min-width:0; }
+  #container4 a { height:100%; display:flex; align-items:center; }
+  #container4 img { height:100%; width:auto; max-height:100%; max-width:100%; object-fit:contain; }
+  #tooltip { position:fixed; pointer-events:none; display:none; background:#fff;
+    border:1px solid #DBDBDB; padding:6px 8px; font-size:12px; border-radius:4px; }
+  #tooltip .tt-date { font-weight:700; margin-bottom:3px; }
+  #tooltip .tt-row { display:flex; align-items:center; gap:6px; padding:1px 0; }
+  #tooltip .tt-row .chip { width:10px; height:10px; border-radius:2px; flex:none; }
+  #tooltip .tt-row .nm { color:#475569; }
+  #tooltip .tt-row .vl { margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; padding-left:12px; }
+  #tooltip .tt-row.total { border-top:1px solid #DBDBDB; margin-top:3px; padding-top:3px; }
+  /* house segmented pill (copy verbatim) */
+  .selector-group {
+    display:flex; align-items:center; justify-content:center;
+    gap:clamp(2px,0.5vw,6px); padding:clamp(2px,0.4vw,4px);
+    border-radius:6px; border:1px solid rgba(17,24,39,0.15); background:#f8fafc;
+    max-width:100%; flex-shrink:1; min-width:0;
+  }
+  .selector-button {
+    border:none; background:transparent; border-radius:6px;
+    padding:clamp(4px,0.8vh,8px) clamp(8px,1.5vw,14px);
+    font-size:clamp(9px,1.4vw,13px); font-weight:600; color:#475569;
+    cursor:pointer; white-space:nowrap; min-width:0;
+    transition:background 0.2s ease, color 0.2s ease;
+  }
+  .selector-button.active { background:#2756d3; color:#fff; }
+  svg text { font-family:inherit; }
+  svg .grid .domain { display:none; }
+  svg .grid .tick line { stroke:#DBDBDB; stroke-dasharray:2,3; }
+  svg .grid text { fill:#475569; font-weight:600; font-size:11px; }
+  /* Short iframe / "snapshot" embed: drop ALL chrome (controls, legend, source, logo); chart alone fills the frame. */
+  @media (max-height:500px){
+    .viz-grid { grid-template-rows:1fr !important; grid-template-columns:1fr !important; padding-bottom:0; }
+    #container1 { grid-row:1 !important; grid-column:1 / -1 !important; }
+    #container2,#container3,#container4,#container5 { display:none !important; }
+  }
+</style></head><body>
+<div class="viz-grid">
+  <div id="container1"><div id="viz"></div></div>
+  <div id="container5"></div>  <!-- control row: metric + individuals pills -->
+  <div id="container2"><div id="legend"></div></div>
+  <div id="container3"><span id="source-text"></span></div>
+  <div id="container4"><a href="https://aiworld.eu/" target="_blank" rel="noopener"><img src="https://aiworld.eu/logo-transparent.svg" alt="AI World"></a></div>
+</div>
+<div id="tooltip"></div>
+<script>
+"use strict";
+// ---- CONFIG: declare everything; nothing implicit ----
+const SHOW_CONTAINER_2 = 1, SHOW_CONTAINER_3 = 1, SHOW_CONTAINER_4 = 1, SHOW_CONTAINER_5 = 1;
+const SHOW_TOOLTIP = 1;
+const BREAKPOINT_COMPACT = 500;                       // px; MUST equal --breakpoint-compact
+/* Fixed org-type palette (project-wide contract, colorblind-safe). */
+const COLORS = { individual:"#B3B3B3", company:"#DE8F05", community:"#029E73", "non-profit":"#D55E00",
+                 university:"#CC78BC", classroom:"#CA9161", government:"#0173B2" };
+const INK = "#0f172a", MUTED = "#475569";
+const METRIC_ORDER = ["dlat", "lk"];
+const METRIC_LABELS = { dlat: "Total downloads", lk: "Likes" };
+const ACCOUNT_OPTIONS = [["orgs", "Organisations only"], ["all", "Incl. individual accounts"]];
+const SOURCE_NAME = "Hugging Face hub weekly snapshots (hfmlsoc)";
+const SOURCE_HREF = "https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots";
+/* DATA: {dates[w], org_types[t], dlat[t][w], lk[t][w]} — sums per org type per week;
+   frozen upstream weeks already smoothed (evenly spread) at build time. */
+const DATA = /*__DATA__*/;
+
+document.getElementById("source-text").innerHTML =
+  'Source: <a href="' + SOURCE_HREF + '" target="_blank" rel="noopener">' + SOURCE_NAME + '</a>';
+
+// Show only the footer rows whose flag is on, then recompute grid rows.
+// Visual order under the chart: container5 (controls), legend, then source+logo.
+(function applyContainerVisibility(){
+  const grid = document.querySelector(".viz-grid"), c = n => document.getElementById("container"+n);
+  const c2=c(2), c3=c(3), c4=c(4), c5=c(5);
+  if (c2 && !SHOW_CONTAINER_2) c2.style.display="none";
+  if (c3 && !SHOW_CONTAINER_3) c3.style.display="none";
+  if (c4 && !SHOW_CONTAINER_4) c4.style.display="none";
+  if (c5 && !SHOW_CONTAINER_5) c5.style.display="none";
+  const rowCtrl=SHOW_CONTAINER_5, rowLegend=SHOW_CONTAINER_2, rowFooter=SHOW_CONTAINER_3||SHOW_CONTAINER_4;
+  const rows=[]; let r=1;
+  rows.push((20-(rowCtrl?1:0)-(rowLegend?1:0)-(rowFooter?1:0))+"fr");   // chart absorbs freed rows
+  if (rowCtrl)   { rows.push("1fr"); r++; if (c5) c5.style.gridRow=r; }
+  if (rowLegend) { rows.push("1fr"); r++; if (c2) c2.style.gridRow=r; }
+  if (rowFooter) { rows.push("1fr"); r++;
+    if (SHOW_CONTAINER_3 && c3) c3.style.gridRow=r;
+    if (SHOW_CONTAINER_4 && c4) c4.style.gridRow=r;
+    if (SHOW_CONTAINER_3 && !SHOW_CONTAINER_4 && c3) c3.style.gridColumn="1 / span 2";  // lone item spans both cols
+    if (!SHOW_CONTAINER_3 && SHOW_CONTAINER_4 && c4) c4.style.gridColumn="1 / span 2";
+  }
+  grid.style.gridTemplateRows = rows.join(" ");
+  c(1).style.gridRow = "1";
+})();
+
+/* ---- state ---- */
+let currentMetric = "dlat";        // 'dlat' (total downloads, default) | 'lk' (likes)
+let includeIndividuals = false;
+let firstRender = true;
+const tooltip = document.getElementById("tooltip");
+const vizContainer = document.getElementById("viz");
+
+/* ---- helpers ---- */
+function fmtTick(v){
+  if (v == null) return "–";
+  for (const [div, suf] of [[1e9,"B"],[1e6,"M"],[1e3,"K"]])
+    if (v >= div) { const x = v/div; return (Number.isInteger(x) ? x : +x.toFixed(1)) + suf; }
+  return String(Math.round(v));
+}
+function fmtPct(x){ return Math.round(x*100) + "%"; }
+function niceMax(v){
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1,1.2,1.5,2,2.5,3,4,5,6,8,10]) if (m*p >= v) return m*p;
+  return 10*p;
+}
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDate(ds){ return MONTHS[+ds.slice(5,7)-1] + " '" + ds.slice(2,4); }
+
+/* ---- tooltip ---- */
+function showTooltip(x, y, dateStr, rows){
+  tooltip.replaceChildren(...[document.createElement("div")].map(d => (d.className="tt-date", d.textContent=dateStr, d)),
+    ...rows.map(r => {
+      const row = document.createElement("div"); row.className = "tt-row" + (r.total ? " total" : "");
+      const chip = document.createElement("span"); chip.className = "chip"; chip.style.background = r.color;
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.name;
+      const vl = document.createElement("span"); vl.className = "vl"; vl.textContent = r.value;
+      row.append(chip, nm, vl); return row;
+    }));
+  tooltip.style.display = "block";
+  tooltip.style.left = Math.min(x + 14, innerWidth - tooltip.offsetWidth - 8) + "px";
+  tooltip.style.top = Math.min(y + 14, innerHeight - tooltip.offsetHeight - 8) + "px";
+}
+function hideTooltip(){ tooltip.style.display = "none"; }
+
+/* ---- controls (build then wire; active styling purely class-driven) ---- */
+let metricGroup = null, accountGroup = null;
+function buildControls(){
+  const c5 = document.getElementById("container5");
+  c5.innerHTML = "";
+  const mk = (options, getCur, set) => {
+    const g = document.createElement("div"); g.className = "selector-group";
+    for (const [val, label] of options){
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "selector-button"; b.textContent = label;
+      b.dataset.value = val; b.title = label; b.setAttribute("aria-label", label);
+      b.addEventListener("click", () => {
+        if (getCur() === b.dataset.value) return;   // avoid a redundant redraw
+        set(val); updateControlState(); render();
+      });
+      g.appendChild(b);
+    }
+    return g;
+  };
+  metricGroup = mk(METRIC_ORDER.map(m => [m, METRIC_LABELS[m]]), () => currentMetric, v => currentMetric = v);
+  accountGroup = mk(ACCOUNT_OPTIONS, () => includeIndividuals ? "all" : "orgs", v => includeIndividuals = v === "all");
+  c5.append(metricGroup, accountGroup);
+  updateControlState();
+}
+function updateControlState(){
+  metricGroup.querySelectorAll(".selector-button").forEach(b => b.classList.toggle("active", b.dataset.value === currentMetric));
+  const cur = includeIndividuals ? "all" : "orgs";
+  accountGroup.querySelectorAll(".selector-button").forEach(b => b.classList.toggle("active", b.dataset.value === cur));
+}
+
+function buildLegend(bands){
+  const lg = document.getElementById("legend");
+  lg.innerHTML = "";
+  for (const b of bands){                       // stack order, largest (bottom band) first
+    const s = document.createElement("span");
+    const chip = document.createElement("span"); chip.className = "chip"; chip.style.background = b.color;
+    s.append(chip, b.name);
+    lg.appendChild(s);
+  }
+}
+
+/* ---- render: clears the SVG and rebuilds from a measured container ---- */
+function render(){
+  try { draw(); }
+  catch (err) {                                  // graceful failure: never fail silently
+    const b = document.createElement("div");
+    b.style.cssText = "position:fixed;bottom:12px;left:12px;z-index:999;background:#fef2f2;border:1px solid #E53229;"
+      + "color:#991b1b;padding:8px 12px;border-radius:6px;font-size:12px;max-width:420px;";
+    b.textContent = "Render error: " + err.message;
+    document.body.append(b);
+  }
+  firstRender = false;                           // no animation on resize redraws
+}
+
+function draw(){
+  d3.select("#viz").selectAll("*").remove();
+  hideTooltip();
+  const rect = vizContainer.getBoundingClientRect();
+  const cw = Math.max(300, rect.width), H = Math.max(180, rect.height);
+  const compact = window.matchMedia(`(max-height:${BREAKPOINT_COMPACT}px)`).matches;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const TYPES = DATA.org_types;
+  const series = DATA[currentMetric];
+  const LAST = DATA.dates.length - 1;
+  const kept = TYPES.map((t, i) => i).filter(i => includeIndividuals || TYPES[i] !== "individual");
+  kept.sort((a, b) => (series[b][LAST] || 0) - (series[a][LAST] || 0));   // largest at the bottom
+  const bands = kept.map(i => ({ name: TYPES[i], color: COLORS[TYPES[i]], vals: series[i] }));
+  buildLegend(bands);
+
+  let x0 = 0;                                    // clip to the first week the metric is tracked
+  while (x0 < LAST && bands.every(b => b.vals[x0] == null)) x0++;
+  const span = Math.max(1, LAST - x0), nW = LAST - x0 + 1;
+
+  const tot = new Array(nW).fill(0);
+  for (let k = 0; k < nW; k++) for (const b of bands) tot[k] += b.vals[x0 + k] || 0;
+  const yMax = niceMax(Math.max(1, ...tot));
+  const ticks = [0, .25, .5, .75, 1].map(f => f * yMax);
+  // margins from the longest tick label; D3 margin convention
+  const ML = 16 + 7.2 * Math.max(...ticks.map(t => fmtTick(t).length));
+  const MR = 14, MT = 10, MB = compact ? 20 : 26;
+  const iw = cw - ML - MR, ih = H - MT - MB;
+  const X = d3.scaleLinear().domain([x0, x0 + span]).range([ML, ML + iw]);
+  const Y = d3.scaleLinear().domain([0, yMax]).range([MT + ih, MT]);
+
+  const svg = d3.select("#viz").append("svg")
+    .attr("viewBox", `0 0 ${cw} ${H}`).attr("width", cw).attr("height", H);
+
+  // gridlines via axisLeft(y).tickSize(-innerWidth); styling from the .grid CSS
+  svg.append("g").attr("class", "grid").attr("transform", `translate(${ML},0)`)
+    .call(d3.axisLeft(Y).tickValues(ticks).tickSize(-iw).tickPadding(8).tickFormat(fmtTick));
+
+  const nx = Math.min(compact || cw < 480 ? 4 : 6, span + 1);
+  for (let i = 0; i < nx; i++) {
+    const w = Math.round(x0 + (span * i) / (nx - 1 || 1));
+    const anchor = i === 0 ? "start" : i === nx - 1 ? "end" : "middle";  // keep edge labels inside the plot
+    const xa = i === 0 ? X(w) - 4 : i === nx - 1 ? X(w) + 4 : X(w);
+    svg.append("text").attr("x", xa).attr("y", H - 7).attr("text-anchor", anchor)
+      .attr("font-size", 11).attr("font-weight", 600).attr("fill", MUTED).text(fmtDate(DATA.dates[w]));
+  }
+
+  // cumulative stacking, bottom band first; thin white seams separate the bands
+  const area = d3.area().x((d, k) => X(x0 + k)).y0(d => Y(d[0])).y1(d => Y(d[1]));
+  const boundary = d3.line().x((h, k) => X(x0 + k)).y(h => Y(h));
+  const layers = svg.append("g");
+  let lo = new Array(nW).fill(0);
+  bands.forEach((b, bi) => {
+    const hi = lo.map((l, k) => l + (b.vals[x0 + k] || 0));
+    layers.append("path").attr("d", area(hi.map((h, k) => [lo[k], h]))).attr("fill", b.color);
+    if (bi < bands.length - 1)                   // no seam on the stack's outer top edge
+      layers.append("path").attr("d", boundary(hi)).attr("fill", "none")
+        .attr("stroke", "#fff").attr("stroke-width", 1.5);
+    lo = hi;
+  });
+  if (firstRender && !reducedMotion)             // grow/fade in on first render only
+    layers.attr("opacity", 0).transition().duration(850).ease(d3.easeCubicOut).attr("opacity", 1);
+
+  svg.append("line").attr("x1", ML).attr("x2", cw - MR).attr("y1", Y(0)).attr("y2", Y(0))
+    .attr("stroke", INK).attr("stroke-width", 1);
+
+  if (SHOW_TOOLTIP) {
+    const cross = svg.append("line").attr("y1", MT).attr("y2", MT + ih)
+      .attr("stroke", "#94a3b8").attr("stroke-width", 1).attr("visibility", "hidden");
+    const overlay = svg.append("rect").attr("x", ML).attr("y", MT).attr("width", iw).attr("height", ih)
+      .attr("fill", "transparent").style("cursor", "crosshair");
+    overlay.on("mousemove", evt => {
+      const r = svg.node().getBoundingClientRect();
+      const px = (evt.clientX - r.left) * (cw / r.width);
+      const w = Math.max(x0, Math.min(LAST, Math.round(x0 + ((px - ML) / iw) * span)));
+      const k = w - x0;
+      cross.attr("x1", X(w)).attr("x2", X(w)).attr("visibility", "visible");
+      const rows = [];
+      for (let bi = bands.length - 1; bi >= 0; bi--) {   // visually top band first
+        const b = bands[bi], v = b.vals[w] || 0;
+        rows.push({ name: b.name + " · " + fmtPct(tot[k] ? v / tot[k] : 0), color: b.color, value: fmtTick(v) });
+      }
+      rows.push({ name: "total", color: INK, value: fmtTick(tot[k]), total: true });
+      showTooltip(evt.clientX, evt.clientY, DATA.dates[w], rows);
+    }).on("mouseleave", () => { cross.attr("visibility", "hidden"); hideTooltip(); });
+  }
+}
+
+buildControls();
+render();
+
+let resizeTimer = null;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); });
+if (typeof ResizeObserver !== "undefined") {
+  let first = true;                              // observe() fires once immediately; keep the entry animation
+  new ResizeObserver(() => { if (first) { first = false; return; } clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); })
+    .observe(vizContainer);
+}
+</script></body></html>

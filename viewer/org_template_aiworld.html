@@ -58,6 +58,40 @@ select, input[type=search] {
   background: #f8fafc; border: 1px solid rgba(17,24,39,0.15);
   border-radius: 6px; padding: 6px 8px;
 }
+/* ---- house dropdown (pill palette, chevron rotates when open) ---- */
+.dropdown { position: relative; }
+.drop-toggle {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font: inherit; font-size: clamp(11px,1.3vw,13px); font-weight: 600; color: #475569;
+  background: #f8fafc; border: 1px solid rgba(17,24,39,0.15); border-radius: 6px; padding: 6px 10px;
+}
+.drop-toggle::after {
+  content: ''; width: 7px; height: 7px; margin-top: -3px;
+  border-right: 1.5px solid #475569; border-bottom: 1.5px solid #475569;
+  transform: rotate(45deg); transition: transform 0.2s ease;
+}
+.drop-toggle[aria-expanded="true"]::after { transform: rotate(-135deg); margin-top: 3px; }
+.drop-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; min-width: 200px; display: none;
+  background: var(--surface); border: 1px solid rgba(17,24,39,0.15); border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(17,24,39,0.12); padding: 6px;
+}
+.drop-menu.open { display: block; }
+.drop-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; text-align: left;
+  border: 0; background: none; border-radius: 4px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: #475569;
+}
+.drop-item:hover { background: #f8fafc; }
+.drop-item .tick { width: 14px; flex: none; color: var(--brand); font-weight: 700; }
+.drop-reset {
+  display: block; width: 100%; margin-top: 4px; padding: 5px 8px; text-align: center;
+  border: 0; border-top: 1px solid var(--grid); background: none; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--brand);
+}
+.drop-reset:hover { background: #f8fafc; }
+/* thin white halo behind donut labels so they stay readable on any slice colour */
+.donut-label { paint-order: stroke; stroke: #fff; stroke-width: 2.5px; stroke-linejoin: round; }
 /* ---- charts ---- */
 .chartrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
 .chartbox { min-width: 0; }
@@ -154,8 +188,12 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; line-height: 1.
     <div><h2>Top accounts</h2><p class="caption" id="orgsCaption"></p></div>
     <div class="controls">
       <div class="fgroup"><span class="flabel">Rank by</span><div class="selector-group" id="segRankMetric"></div></div>
-      <div class="fgroup"><span class="flabel">Individuals</span><div class="selector-group" id="segInd"></div></div>
-      <div class="fgroup"><span class="flabel">Rank week</span><select id="selWeek"></select></div>
+      <div class="fgroup"><span class="flabel">Account types</span>
+        <div class="dropdown" id="typeDrop">
+          <button type="button" class="drop-toggle" id="typeToggle" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div class="drop-menu" id="typeMenu" role="listbox" aria-multiselectable="true"></div>
+        </div>
+      </div>
     </div>
   </div>
   <h3 style="margin-top:12px" id="pieTitle"></h3>
@@ -257,8 +295,8 @@ function rankLabel(m) { return m === 'n' ? REPO_NOUN[state.entity] + ' count' : 
 /* ---------- state ---------- */
 const state = {
   entity: 'datasets',
-  includeInd: false,
-  rankWeek: 0,
+  activeTypes: new Set(TYPES.filter(t => t !== 'individual')),  // Account types dropdown; default: everything except individual
+  rankWeek: 0,          // set to the last week by setEntity; the ranking's fixed reference point
   rankMetric: 'dl',     // pie + table: 'dl' | 'dlat' | 'lk' | 'n'
   sort: { key: 'rank', dir: 1 },
   selectedOrg: null,
@@ -445,14 +483,14 @@ function renderHist(container, counts, labels, opts) {
 
 /* ---------- shared filters ---------- */
 function keptTypeIdx() {
-  return TYPES.map((t, i) => i).filter(i => state.includeInd || TYPES[i] !== 'individual');
+  return TYPES.map((t, i) => i).filter(i => state.activeTypes.has(TYPES[i]));
 }
 /* Ranked (o, v) pairs over the embedded pool by `metric` at `week`, respecting
-   the individuals toggle. Exact for N <= the build's TOP_POOL. */
+   the Account types selection. Exact for N <= the build's TOP_POOL. */
 function rankedAccounts(metric, week) {
   const out = [];
   for (const o of ORGS) {
-    if (!state.includeInd && o.type === 'individual') continue;
+    if (!state.activeTypes.has(o.type)) continue;
     const v = valueAt(o, week, metric);
     if (v != null && v > 0) out.push({ o, v });
   }
@@ -517,10 +555,9 @@ function renderOrgTable() {
     el('td', { class: 'num' }, deltaCell(r.delta))));
   $('orgTable').replaceChildren(el('table', {}, el('thead', {}, head), el('tbody', {}, body)));
 
-  $('orgsCaption').textContent = (m === 'dlat' && rw < AT0)
-    ? `Total downloads are tracked from ${E.dates[AT0]}, so pick a later rank week.`
-    : `Top ${rows.length} accounts by ${rankLabel(m)} at ${E.dates[rw]}`
-      + (state.includeInd ? ' (individual accounts included).' : ' (organisations only; switch Individuals to include personal accounts).');
+  const excluded = TYPES.filter(t => !state.activeTypes.has(t));
+  $('orgsCaption').textContent = `Top ${rows.length} accounts by ${rankLabel(m)} in the latest snapshot (${E.dates[rw]})`
+    + (excluded.length ? ` · excluding ${excluded.join(', ')} accounts.` : ' · all account types.');
   $('orgTableNote').textContent = `The donut and all shares refer to the full hub, never just the accounts listed here. `
     + `The table ranks the embedded pool: every account that ever reached a weekly top by downloads, likes, or ${noun} count (${ORGS.length} accounts). `
     + `Click a row to load its account statistics below.`;
@@ -546,7 +583,7 @@ function renderPie() {
   $('pieTitle').textContent = `Distribution of ${rankLabel(m)} across the full hub at ${E.dates[rw]}`;
   if (m === 'dlat' && rw < AT0) {
     box.replaceChildren();
-    list.replaceChildren(el('p', { class: 'note' }, `All-time downloads are tracked from ${E.dates[AT0]}, so pick a later rank week.`));
+    list.replaceChildren(el('p', { class: 'note' }, `Total downloads are only tracked from ${E.dates[AT0]}, after the latest snapshot.`));
     return;
   }
   const items = pieItems();
@@ -585,9 +622,9 @@ function renderPie() {
     }
     if (frac >= 0.07) {  // direct-label the big slices; the list covers the rest
       const [lx, ly] = arcGen.centroid({ startAngle: f * TAU, endAngle: (f + frac) * TAU });
-      g.append('text').attr('x', lx).attr('y', ly - 2).attr('text-anchor', 'middle')
+      g.append('text').attr('class', 'donut-label').attr('x', lx).attr('y', ly - 2).attr('text-anchor', 'middle')
         .attr('font-size', 11.5).attr('font-weight', 700).attr('fill', INK).attr('pointer-events', 'none').text(it.name);
-      g.append('text').attr('x', lx).attr('y', ly + 11).attr('text-anchor', 'middle')
+      g.append('text').attr('class', 'donut-label').attr('x', lx).attr('y', ly + 11).attr('text-anchor', 'middle')
         .attr('font-size', 11).attr('font-weight', 600).attr('fill', INK).attr('pointer-events', 'none').text(fmtPct(it.v / total));
     }
     f += frac;
@@ -695,12 +732,56 @@ function renderControls() {
     () => state.entity, v => { setEntity(v); state.sort = { key: 'rank', dir: 1 }; });
   seg($('segRankMetric'), Object.keys(RANK_METRICS).map(k => [k, rankLabel(k)]), () => state.rankMetric,
     v => { state.rankMetric = v; state.sort = { key: 'rank', dir: 1 }; });
-  seg($('segInd'), [[false, 'orgs only'], [true, 'incl. individuals']],
-    () => state.includeInd, v => { state.includeInd = v; });
+  updateTypeDropdown();
+}
 
-  const sel = $('selWeek');
-  sel.replaceChildren(...E.dates.map((d, i) => el('option', { value: i, ...(i === state.rankWeek ? { selected: '' } : {}) }, d)));
-  sel.value = state.rankWeek;
+/* Account types multi-select: built once so the open menu survives re-renders;
+   renderControls only refreshes the toggle label and the ticks. */
+function buildTypeDropdown() {
+  const toggle = $('typeToggle'), menu = $('typeMenu');
+  toggle.addEventListener('click', () => {
+    const open = menu.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', open);
+  });
+  document.addEventListener('click', e => {
+    if (!$('typeDrop').contains(e.target)) { menu.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { menu.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); }
+  });
+  menu.replaceChildren(...TYPES.map(t => {
+    const b = el('button', { type: 'button', class: 'drop-item', role: 'option',
+      onclick: () => {
+        if (state.activeTypes.has(t)) state.activeTypes.delete(t);
+        else state.activeTypes.add(t);
+        renderAll();
+      } },
+      el('span', { class: 'tick' }, '✓'),
+      el('span', { class: 'chip', style: `background:${COLORS[t]}` }),
+      t);
+    b.dataset.type = t;
+    return b;
+  }),
+  el('button', { type: 'button', class: 'drop-reset',
+    onclick: () => { state.activeTypes = new Set(TYPES.filter(t => t !== 'individual')); renderAll(); } },
+    'reset to default'));
+}
+function typeSummary() {
+  const n = state.activeTypes.size;
+  if (n === TYPES.length) return 'all types';
+  if (n === 0) return 'none selected';
+  const excluded = TYPES.filter(t => !state.activeTypes.has(t));
+  if (excluded.length === 1) return `all except ${excluded[0]}`;
+  if (n <= 2) return TYPES.filter(t => state.activeTypes.has(t)).join(', ');
+  return `${n} of ${TYPES.length} types`;
+}
+function updateTypeDropdown() {
+  $('typeToggle').textContent = typeSummary();
+  $('typeMenu').querySelectorAll('.drop-item').forEach(b => {
+    const on = state.activeTypes.has(b.dataset.type);
+    b.setAttribute('aria-selected', on);
+    b.querySelector('.tick').style.visibility = on ? 'visible' : 'hidden';
+  });
 }
 
 /* ---------- render root ---------- */
@@ -758,7 +839,7 @@ function renderCompareSearch() {
   const first = Object.keys(DATA.entities).find(k => DATA.entities[k]);
   setEntity(first);
 
-  $('selWeek').addEventListener('change', e => { state.rankWeek = +e.target.value; renderAll(); });
+  buildTypeDropdown();
   $('inpSearch').addEventListener('input', renderSearch);
   $('inpCompare').addEventListener('input', renderCompareSearch);
   document.addEventListener('click', e => {

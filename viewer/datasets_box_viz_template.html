@@ -1,0 +1,493 @@
+<!doctype html><html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dataset popularity by organisation type — Hugging Face Hub</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  html,body { margin:0; height:100vh; width:100vw; overflow:hidden; color:#0f172a;
+    font-family: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Helvetica,Arial,sans-serif; }
+  .viz-grid { display:grid; height:100vh; box-sizing:border-box; padding-bottom:clamp(8px,2vh,18px);
+    grid-template-rows:16fr 1fr 1fr 1fr; grid-template-columns:1fr 1fr; }
+  #container1 { grid-row:1; grid-column:1 / -1; min-height:0; } #viz { width:100%; height:100%; }
+  /* control row: the view-switcher pill */
+  #container5 { grid-row:2; grid-column:1 / -1; display:flex; align-items:center; justify-content:center;
+    gap:clamp(6px,1vw,12px); min-width:0; overflow:hidden; }
+  /* caption row: view-specific reading key, centred under the charts */
+  #container2 { grid-row:3; grid-column:1 / -1; display:flex; align-items:center; justify-content:center;
+    padding:0 20px; overflow:hidden; min-width:0; }
+  #caption { font-size:clamp(9px,1.4vw,12.5px); font-weight:600; color:#475569; text-align:center;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  #caption .chip { display:inline-block; width:10px; height:10px; border-radius:2px; margin:0 4px 0 10px; vertical-align:-1px; }
+  /* source (left): width-scaled, vertically centred, ellipsised so a long source never wraps the row */
+  #container3 { grid-row:4; font-size:clamp(5px,1.6vw,16px); display:flex; align-items:center; justify-content:flex-start;
+    padding:0 20px; overflow:hidden; min-width:0; }
+  #container3 #source-text { font-weight:600; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  #container3 #source-text a { color:#2756d3; text-decoration:underline; }
+  /* logo (right): fills the footer row height */
+  #container4 { grid-row:4; display:flex; justify-content:flex-end; align-items:center; padding:0 20px; overflow:hidden; min-width:0; }
+  #container4 a { height:100%; display:flex; align-items:center; }
+  #container4 img { height:100%; width:auto; max-height:100%; max-width:100%; object-fit:contain; }
+  #tooltip { position:fixed; pointer-events:none; display:none; background:#fff;
+    border:1px solid #DBDBDB; padding:6px 8px; font-size:12px; border-radius:4px; }
+  #tooltip .tt-head { font-weight:700; margin-bottom:3px; display:flex; align-items:center; gap:6px; }
+  #tooltip .tt-head .chip { width:10px; height:10px; border-radius:2px; flex:none; }
+  #tooltip .tt-row { display:flex; align-items:center; gap:6px; padding:1px 0; }
+  #tooltip .tt-row .nm { color:#475569; }
+  #tooltip .tt-row .vl { margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; padding-left:16px; }
+  #tooltip .tt-row.sep { border-top:1px solid #DBDBDB; margin-top:3px; padding-top:3px; }
+  /* house segmented pill (copy verbatim) */
+  .selector-group {
+    display:flex; align-items:center; justify-content:center;
+    gap:clamp(2px,0.5vw,6px); padding:clamp(2px,0.4vw,4px);
+    border-radius:6px; border:1px solid rgba(17,24,39,0.15); background:#f8fafc;
+    max-width:100%; flex-shrink:1; min-width:0;
+  }
+  .selector-button {
+    border:none; background:transparent; border-radius:6px;
+    padding:clamp(4px,0.8vh,8px) clamp(8px,1.5vw,14px);
+    font-size:clamp(9px,1.4vw,13px); font-weight:600; color:#475569;
+    cursor:pointer; white-space:nowrap; min-width:0;
+    transition:background 0.2s ease, color 0.2s ease;
+  }
+  .selector-button.active { background:#2756d3; color:#fff; }
+  svg text { font-family:inherit; }
+  svg .grid line { stroke:#DBDBDB; stroke-dasharray:2,3; }
+  svg .grid text { fill:#475569; font-weight:600; font-size:11px; }
+  /* Short iframe / "snapshot" embed: drop ALL chrome (pill, caption, source, logo); charts alone fill the frame. */
+  @media (max-height:500px){
+    .viz-grid { grid-template-rows:1fr !important; padding-bottom:0; }
+    #container2,#container3,#container4,#container5 { display:none !important; }
+  }
+</style></head><body>
+<div class="viz-grid">
+  <div id="container1"><div id="viz"></div></div>
+  <div id="container5"></div>
+  <div id="container2"><span id="caption"></span></div>
+  <div id="container3"><span id="source-text"></span></div>
+  <div id="container4"><a href="https://aiworld.eu/" target="_blank" rel="noopener"><img src="https://aiworld.eu/logo-transparent.svg" alt="AI World"></a></div>
+</div>
+<div id="tooltip"></div>
+<script>
+"use strict";
+/* Fixed org-type palette (project-wide contract, colorblind-safe). Identity is
+   never color-alone: every box/bar/ridge sits beside its own axis label. */
+const COLORS = { individual:"#B3B3B3", company:"#DE8F05", community:"#029E73", "non-profit":"#D55E00",
+                 university:"#CC78BC", classroom:"#CA9161", government:"#0173B2" };
+const INK = "#0f172a", MUTED = "#475569";
+/* sequential brand-blue ramp for the quantile-share segments (light -> dark = bottom -> top) */
+const SEGS = [
+  { key: "top1",  label: "top 1%",     color: "#16337e", dark: true  },
+  { key: "next9", label: "next 9%",    color: "#3f6ad8", dark: true  },
+  { key: "next40",label: "next 40%",   color: "#93afec", dark: false },
+  { key: "bot50", label: "bottom 50%", color: "#dbe3f8", dark: false },
+];
+const PANELS = [
+  { key: "dlat", title: "Total downloads", sub: "all-time, per dataset", noun: "download" },
+  { key: "lk",   title: "Likes",           sub: "per dataset",           noun: "like" },
+];
+const VIEWS = [["box", "Box plots"], ["share", "Quantile shares"],
+               ["ridge", "Ridgeline · datasets"], ["ridgew", "Volume by percentile"]];
+const SOURCE_NAME = "Hugging Face hub weekly snapshots (hfmlsoc)";
+const SOURCE_HREF = "https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots";
+/* DATA: {snapshot, org_types[t], n[t], n_orgs[t], metrics:{dlat|lk:{share,p5..p99,max,
+   mean,total, conc|conco:{c1,c10,c50}[t], dens:{hi,d[t][bin]}, densr|densrz:{w,d[t][bin]}}}}.
+   Quantiles/densities are over datasets with >=1 of the metric (zero-inflated data);
+   share is the fraction clearing that bar; conc/conco are the volume shares of the
+   type's top 1/10/50% of ALL its datasets/accounts; densr(z) is volume share by ACCOUNT
+   rank — each author's datasets aggregated — on a linear top-fraction grid 0..w, best
+   first, normalised to ONE scale across types (tallest peak = 1). */
+const DATA = /*__DATA__*/;
+
+document.getElementById("source-text").innerHTML =
+  'Source: <a href="' + SOURCE_HREF + '" target="_blank" rel="noopener">' + SOURCE_NAME + '</a>'
+  + ' · snapshot of ' + DATA.snapshot;
+
+/* ---- state (deep-linkable: #box / #share / #ridge / #ridgew / #ridgew10) ---- */
+const HASH = location.hash.slice(1);
+let currentView = ["box", "share", "ridge", "ridgew"].includes(HASH) ? HASH : HASH === "ridgew10" ? "ridgew" : "box";
+let rankZoom = HASH === "ridgew10";                    // Volume-by-percentile only: zoom into the top 10%
+let firstRender = true;
+const tooltip = document.getElementById("tooltip");
+const vizContainer = document.getElementById("viz");
+
+/* ---- helpers ---- */
+function fmtTick(v){
+  if (v == null) return "–";
+  for (const [div, suf] of [[1e9,"B"],[1e6,"M"],[1e3,"K"]])
+    if (v >= div) { const x = v/div; return (Number.isInteger(x) ? x : +x.toFixed(1)) + suf; }
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+function fmtPct(x){ const p = x*100; return (p >= 99.5 ? Math.round(p) : p >= 10 ? Math.round(p) : +p.toFixed(1)) + "%"; }
+/* decade gridlines; 1-2-5 steps when the domain spans few decades */
+function logTicks(lo, hi){
+  const e0 = Math.floor(Math.log10(lo)), e1 = Math.ceil(Math.log10(hi));
+  const mant = e1 - e0 > 3 ? [1] : [1, 2, 5];
+  const out = [];
+  for (let e = e0; e <= e1; e++) for (const m of mant){
+    const v = m * Math.pow(10, e);
+    if (v >= lo * 0.999 && v <= hi * 1.001) out.push(v);
+  }
+  return out;
+}
+
+/* ---- tooltip ---- */
+function showTooltip(x, y, head, color, rows){
+  const h = document.createElement("div"); h.className = "tt-head";
+  const chip = document.createElement("span"); chip.className = "chip"; chip.style.background = color;
+  h.append(chip, head);
+  tooltip.replaceChildren(h, ...rows.map(r => {
+    const row = document.createElement("div"); row.className = "tt-row" + (r.sep ? " sep" : "");
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.name;
+    const vl = document.createElement("span"); vl.className = "vl"; vl.textContent = r.value;
+    row.append(nm, vl); return row;
+  }));
+  tooltip.style.display = "block";
+  tooltip.style.left = Math.min(x + 14, innerWidth - tooltip.offsetWidth - 8) + "px";
+  tooltip.style.top = Math.min(y + 14, innerHeight - tooltip.offsetHeight - 8) + "px";
+}
+function hideTooltip(){ tooltip.style.display = "none"; }
+
+/* stats rows shared by the box and ridgeline tooltips */
+function statRows(M, i){
+  return [
+    { name: "datasets", value: fmtTick(DATA.n[i]) },
+    { name: "with ≥1", value: fmtPct(M.share[i]) },
+    { name: "maximum", value: fmtTick(M.max[i]), sep: true },
+    { name: "99th percentile", value: fmtTick(M.p99[i]) },
+    { name: "95th percentile", value: fmtTick(M.p95[i]) },
+    { name: "75th percentile", value: fmtTick(M.q3[i]) },
+    { name: "median", value: fmtTick(M.med[i]) },
+    { name: "25th percentile", value: fmtTick(M.q1[i]) },
+    { name: "5th percentile", value: fmtTick(M.p5[i]) },
+    { name: "mean", value: fmtTick(M.mean[i]) },
+  ];
+}
+
+/* ---- controls + caption ---- */
+let viewGroup = null, zoomGroup = null;
+function syncHash(){ history.replaceState(null, "", "#" + currentView + (currentView === "ridgew" && rankZoom ? "10" : "")); }
+function buildControls(){
+  const c5 = document.getElementById("container5");
+  const mk = (options, getCur, set) => {
+    const g = document.createElement("div"); g.className = "selector-group";
+    for (const [val, label] of options){
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "selector-button"; b.textContent = label;
+      b.dataset.value = val; b.title = label; b.setAttribute("aria-label", label);
+      b.addEventListener("click", () => {
+        if (getCur() === val) return;
+        set(val); syncHash(); updateControlState(); setCaption(); render();
+      });
+      g.appendChild(b);
+    }
+    return g;
+  };
+  viewGroup = mk(VIEWS, () => currentView, v => currentView = v);
+  zoomGroup = mk([["full", "Full catalog"], ["top10", "Top 10%"]],
+    () => rankZoom ? "top10" : "full", v => rankZoom = v === "top10");
+  c5.replaceChildren(viewGroup, zoomGroup);
+  updateControlState();
+}
+function updateControlState(){
+  viewGroup.querySelectorAll(".selector-button").forEach(b => b.classList.toggle("active", b.dataset.value === currentView));
+  zoomGroup.style.display = currentView === "ridgew" ? "" : "none";  // zoom applies to the percentile view only
+  const cur = rankZoom ? "top10" : "full";
+  zoomGroup.querySelectorAll(".selector-button").forEach(b => b.classList.toggle("active", b.dataset.value === cur));
+}
+function setCaption(){
+  const cap = document.getElementById("caption");
+  if (currentView === "box"){
+    cap.textContent = "Box: 25th–75th percentile · line: median · whiskers: 5th–95th percentile · log scale. "
+      + "Boxes cover datasets with ≥1 download / like; % above a box = share of the type's datasets with ≥1.";
+  } else if (currentView === "share"){
+    cap.replaceChildren("Share of the type's total volume carried by its datasets, best first:");
+    for (const s of SEGS){
+      const chip = document.createElement("span"); chip.className = "chip"; chip.style.background = s.color;
+      cap.append(chip, s.label);
+    }
+    cap.append(" of the type's datasets · number above: the type's total");
+  } else if (currentView === "ridge"){
+    cap.textContent = "Density of the type's datasets with ≥1 download / like over a log scale · "
+      + "curves normalised to equal peak height · % right of a curve = share of the type's datasets with ≥1.";
+  } else {
+    cap.textContent = "Contribution to the type's total downloads / likes by account rank (an account = all its datasets combined) — "
+      + "best accounts right · height: contribution on a log scale (tallest peak to floor spans ×10,000) · one scale per panel.";
+  }
+}
+
+/* ---- render: clears the SVG and rebuilds from a measured container ---- */
+function render(){
+  try { draw(); }
+  catch (err) {                                  // graceful failure: never fail silently
+    const b = document.createElement("div");
+    b.style.cssText = "position:fixed;bottom:12px;left:12px;z-index:999;background:#fef2f2;border:1px solid #E53229;"
+      + "color:#991b1b;padding:8px 12px;border-radius:6px;font-size:12px;max-width:420px;";
+    b.textContent = "Render error: " + err.message;
+    document.body.append(b);
+  }
+  firstRender = false;                           // no animation on resize redraws
+}
+
+function panelTitle(g, spec, px, py, ML){
+  g.append("text").attr("x", px + ML).attr("y", py + 14)
+    .attr("font-size", 14).attr("font-weight", 700).attr("fill", INK).text(spec.title);
+  g.append("text").attr("x", px + ML).attr("y", py + 29)
+    .attr("font-size", 11).attr("font-weight", 600).attr("fill", MUTED).text(spec.sub);
+}
+function typeLabel(g, t, lx, ly, rotate){
+  g.append("text").attr("x", lx).attr("y", ly)
+    .attr("text-anchor", rotate ? "end" : "middle")
+    .attr("transform", rotate ? `rotate(-32 ${lx} ${ly})` : null)
+    .attr("font-size", 11).attr("font-weight", 600).attr("fill", MUTED).text(t);
+}
+
+/* ---- view: box plots (vertical boxes, org types on x, log value axis on y) ---- */
+function drawBoxPanel(svg, spec, px, pw, py, ph){
+  const TYPES = DATA.org_types, M = DATA.metrics[spec.key];
+  const noteShares = M.share.some(s => s < 0.995);      // annotate only where the >=1 cut bites
+
+  const lo = Math.pow(10, Math.floor(Math.log10(Math.max(1, d3.min(M.p5)))));
+  const hi = d3.max(M.p95) * 1.6;                       // headroom for the share labels
+  const ticks = logTicks(lo, hi);
+  const ML = 14 + 7.2 * Math.max(...ticks.map(t => fmtTick(t).length));
+  const MR = 6, MT = 40, MB = 24;
+  const iw = pw - ML - MR;
+  const rotate = iw / TYPES.length < 74;                // slanted type labels when bands get narrow
+  const mb = rotate ? MB + 18 : MB;
+  const Y = d3.scaleLog().domain([lo, hi]).range([py + ph - mb, py + MT]);
+  const X = d3.scaleBand().domain(TYPES).range([px + ML, px + ML + iw]).paddingInner(0.35).paddingOuter(0.12);
+  const boxW = Math.min(46, X.bandwidth());
+
+  const g = svg.append("g");
+  panelTitle(g, spec, px, py, ML);
+
+  const grid = g.append("g").attr("class", "grid");
+  for (const t of ticks){
+    grid.append("line").attr("x1", px + ML).attr("x2", px + ML + iw).attr("y1", Y(t)).attr("y2", Y(t));
+    grid.append("text").attr("x", px + ML - 8).attr("y", Y(t) + 3.5).attr("text-anchor", "end").text(fmtTick(t));
+  }
+  g.append("line").attr("x1", px + ML).attr("x2", px + ML + iw)
+    .attr("y1", py + ph - mb).attr("y2", py + ph - mb).attr("stroke", INK).attr("stroke-width", 1);
+
+  TYPES.forEach((t, i) => {
+    const cx = X(t) + X.bandwidth() / 2, color = COLORS[t];
+    const box = g.append("g");
+    // whiskers p5–q1 and q3–p95, with end caps
+    for (const [a, b] of [[M.p5[i], M.q1[i]], [M.q3[i], M.p95[i]]])
+      box.append("line").attr("x1", cx).attr("x2", cx).attr("y1", Y(a)).attr("y2", Y(b))
+        .attr("stroke", MUTED).attr("stroke-width", 1.2);
+    for (const v of [M.p5[i], M.p95[i]])
+      box.append("line").attr("x1", cx - boxW * 0.25).attr("x2", cx + boxW * 0.25).attr("y1", Y(v)).attr("y2", Y(v))
+        .attr("stroke", MUTED).attr("stroke-width", 1.2);
+    box.append("rect").attr("x", cx - boxW / 2).attr("y", Y(M.q3[i]))
+      .attr("width", boxW).attr("height", Math.max(1, Y(M.q1[i]) - Y(M.q3[i])))
+      .attr("rx", 1.5).attr("fill", color).attr("stroke", "rgba(15,23,42,0.5)").attr("stroke-width", 1);
+    box.append("line").attr("x1", cx - boxW / 2).attr("x2", cx + boxW / 2)
+      .attr("y1", Y(M.med[i])).attr("y2", Y(M.med[i])).attr("stroke", INK).attr("stroke-width", 2);
+    if (noteShares)
+      box.append("text").attr("x", cx).attr("y", Y(M.p95[i]) - 7).attr("text-anchor", "middle")
+        .attr("font-size", 10.5).attr("font-weight", 600).attr("fill", MUTED).text(fmtPct(M.share[i]));
+
+    typeLabel(g, t, cx, py + ph - mb + 15, rotate);
+
+    // hover: full column hit target, highlighted box outline + stats tooltip
+    g.append("rect").attr("x", X(t)).attr("y", py + MT).attr("width", X.bandwidth()).attr("height", ph - MT - mb)
+      .attr("fill", "transparent")
+      .on("mousemove", evt => {
+        box.select("rect").attr("stroke", INK).attr("stroke-width", 1.6);
+        showTooltip(evt.clientX, evt.clientY, t + " — " + spec.title.toLowerCase(), COLORS[t], statRows(M, i));
+      })
+      .on("mouseleave", () => {
+        box.select("rect").attr("stroke", "rgba(15,23,42,0.5)").attr("stroke-width", 1);
+        hideTooltip();
+      });
+  });
+  return g;
+}
+
+/* ---- view: quantile-share stacked bars (100% of the type's volume) ---- */
+function drawSharePanel(svg, spec, px, pw, py, ph){
+  const TYPES = DATA.org_types, M = DATA.metrics[spec.key], C = M.conc;
+  const ML = 46, MR = 6, MT = 54, MB = 24;              // MT leaves room for the per-type total
+  const iw = pw - ML - MR;
+  const rotate = iw / TYPES.length < 74;
+  const mb = rotate ? MB + 18 : MB;
+  const Y = d3.scaleLinear().domain([0, 1]).range([py + ph - mb, py + MT]);
+  const X = d3.scaleBand().domain(TYPES).range([px + ML, px + ML + iw]).paddingInner(0.3).paddingOuter(0.1);
+  const barW = Math.min(56, X.bandwidth());
+
+  const g = svg.append("g");
+  panelTitle(g, spec, px, py, ML);
+
+  const grid = g.append("g").attr("class", "grid");
+  for (const f of [0, .25, .5, .75, 1]){
+    grid.append("line").attr("x1", px + ML).attr("x2", px + ML + iw).attr("y1", Y(f)).attr("y2", Y(f));
+    grid.append("text").attr("x", px + ML - 8).attr("y", Y(f) + 3.5).attr("text-anchor", "end").text(Math.round(f*100) + "%");
+  }
+  g.append("line").attr("x1", px + ML).attr("x2", px + ML + iw)
+    .attr("y1", Y(0)).attr("y2", Y(0)).attr("stroke", INK).attr("stroke-width", 1);
+
+  TYPES.forEach((t, i) => {
+    const cx = X(t) + X.bandwidth() / 2, x0 = cx - barW / 2;
+    const n = DATA.n[i];
+    const k1 = Math.max(1, Math.ceil(0.01 * n)), k10 = Math.max(1, Math.ceil(0.10 * n)), k50 = Math.max(1, Math.ceil(0.50 * n));
+    const vals = [C.c1[i], C.c10[i] - C.c1[i], C.c50[i] - C.c10[i], 1 - C.c50[i]];
+    const counts = [k1, k10 - k1, k50 - k10, n - k50];
+
+    g.append("text").attr("x", cx).attr("y", Y(1) - 7).attr("text-anchor", "middle")   // the type's total volume
+      .attr("font-size", 10.5).attr("font-weight", 600).attr("fill", MUTED).text(fmtTick(M.total[i]));
+
+    let cum = 0;
+    SEGS.forEach((s, si) => {
+      const yTop = Y(1 - cum), yBot = Y(1 - cum - vals[si]);
+      cum += vals[si];
+      const segH = yBot - yTop;
+      const rect = g.append("rect").attr("x", x0).attr("y", yTop).attr("width", barW)
+        .attr("height", Math.max(0, segH)).attr("fill", s.color);
+      if (si > 0)                                       // white seam between segments
+        g.append("line").attr("x1", x0).attr("x2", x0 + barW).attr("y1", yTop).attr("y2", yTop)
+          .attr("stroke", "#fff").attr("stroke-width", 1.5);
+      if (segH >= 13)                                   // direct label where it fits
+        g.append("text").attr("x", cx).attr("y", (yTop + yBot) / 2 + 3.5).attr("text-anchor", "middle")
+          .attr("font-size", 10.5).attr("font-weight", 700).attr("pointer-events", "none")
+          .attr("fill", s.dark ? "#fff" : INK).text(fmtPct(vals[si]));
+      rect.on("mousemove", evt => {
+        rect.attr("stroke", INK).attr("stroke-width", 1.4);
+        showTooltip(evt.clientX, evt.clientY, t + " — " + s.label + " of datasets", s.color, [
+          { name: "share of total " + spec.noun + "s", value: fmtPct(vals[si]) },
+          { name: "datasets in segment", value: fmtTick(counts[si]) },
+          { name: "type total " + spec.noun + "s", value: fmtTick(M.total[i]), sep: true },
+          { name: "top 1% carries", value: fmtPct(C.c1[i]) },
+          { name: "top 10% carries", value: fmtPct(C.c10[i]) },
+          { name: "top 50% carries", value: fmtPct(C.c50[i]) },
+        ]);
+      }).on("mouseleave", () => { rect.attr("stroke", null); hideTooltip(); });
+    });
+    g.append("rect").attr("x", x0).attr("y", Y(1)).attr("width", barW).attr("height", Y(0) - Y(1))
+      .attr("fill", "none").attr("stroke", "rgba(15,23,42,0.35)").attr("stroke-width", 1)
+      .attr("pointer-events", "none");
+
+    typeLabel(g, t, cx, py + ph - mb + 15, rotate);
+  });
+  return g;
+}
+
+/* ---- view: ridgeline (density per type) ----
+   densKey "dens": dataset counts over log10(value), peak-normalised per type.
+   densKey "densr": the type's volume share by rank percentile — linear rank axis
+   with the best datasets RIGHT, per-bin shares drawn on a LOG height scale
+   (floor RANK_DECADES below the tallest peak), ONE scale across types — the
+   >=1-share labels are count-based, so hidden there. */
+const RANK_DECADES = 4;
+function drawRidgePanel(svg, spec, px, pw, py, ph, densKey, showShares){
+  const TYPES = DATA.org_types, M = DATA.metrics[spec.key], D = M[densKey];
+  const rank = densKey.startsWith("densr");
+  const noteShares = showShares && M.share.some(s => s < 0.995);
+  const ML = 82, MR = noteShares ? 46 : 10, MT = 40, MB = 22;
+  const iw = pw - ML - MR, ih = ph - MT - MB;
+  const OVER = 1.7;                                     // ridges may overlap into the row above
+  const rowH = ih / (TYPES.length + OVER - 1);          // headroom so the top ridge stays under the title
+  const ridgeH = rowH * OVER;
+  const d1 = rank ? D.w : D.hi;                         // rank: top-fraction 0..w, best (0) on the right
+  const X = d3.scaleLinear().domain([0, d1]).range(rank ? [px + ML + iw, px + ML] : [px + ML, px + ML + iw]);
+  const bins = D.d[0].length;
+  const bx = k => X((k + 0.5) * d1 / bins);             // bin centres
+  const hgt = rank                                      // log height for rank shares, linear otherwise
+    ? d => d > 0 ? Math.max(0, 1 + Math.log10(d) / RANK_DECADES) : 0
+    : d => d;
+
+  const g = svg.append("g");
+  panelTitle(g, spec, px, py, ML);
+
+  const grid = g.append("g").attr("class", "grid");
+  if (rank){
+    const T = D.w === 1
+      ? [[1, "all"], [.75, "top 75%"], [.5, "top 50%"], [.25, "top 25%"], [0, "best"]]
+      : [[.1, "top 10%"], [.075, "top 7.5%"], [.05, "top 5%"], [.025, "top 2.5%"], [0, "best"]];
+    for (const [f, label] of T){
+      grid.append("line").attr("x1", X(f)).attr("x2", X(f)).attr("y1", py + MT).attr("y2", py + MT + ih);
+      grid.append("text").attr("x", X(f)).attr("y", py + MT + ih + 14)
+        .attr("text-anchor", f === d1 ? "start" : f === 0 ? "end" : "middle").text(label);
+    }
+  } else {
+    const step = D.hi >= 7 ? 2 : 1;                     // sparser decades on very wide domains
+    for (let e = 0; e <= Math.floor(D.hi); e += step){
+      grid.append("line").attr("x1", X(e)).attr("x2", X(e)).attr("y1", py + MT).attr("y2", py + MT + ih);
+      grid.append("text").attr("x", X(e)).attr("y", py + MT + ih + 14).attr("text-anchor", "middle").text(fmtTick(Math.pow(10, e)));
+    }
+  }
+
+  TYPES.forEach((t, i) => {                              // top row first: lower ridges paint over upper ones
+    const base = py + MT + (i + OVER) * rowH, color = COLORS[t];
+    const area = d3.area()
+      .x((d, k) => bx(k)).y0(base).y1(d => base - hgt(d) * ridgeH)
+      .curve(d3.curveBasis);
+    g.append("line").attr("x1", px + ML).attr("x2", px + ML + iw).attr("y1", base).attr("y2", base)
+      .attr("stroke", "rgba(15,23,42,0.25)").attr("stroke-width", 1);
+    const ridge = g.append("path").attr("d", area(D.d[i]))
+      .attr("fill", color).attr("fill-opacity", 0.72).attr("stroke", color).attr("stroke-width", 1.5);
+    g.append("text").attr("x", px + ML - 8).attr("y", base - 3).attr("text-anchor", "end")
+      .attr("font-size", 11).attr("font-weight", 600).attr("fill", MUTED).text(t);
+    if (noteShares)
+      g.append("text").attr("x", px + ML + iw + 6).attr("y", base - 3)
+        .attr("font-size", 10.5).attr("font-weight", 600).attr("fill", MUTED).text(fmtPct(M.share[i]));
+
+    const rows = rank
+      ? [{ name: "accounts", value: fmtTick(DATA.n_orgs[i]) },
+         { name: "datasets", value: fmtTick(DATA.n[i]) },
+         { name: "type total " + spec.noun + "s", value: fmtTick(M.total[i]) },
+         { name: "top 1% of accounts carries", value: fmtPct(M.conco.c1[i]), sep: true },
+         { name: "top 10% of accounts carries", value: fmtPct(M.conco.c10[i]) },
+         { name: "top 50% of accounts carries", value: fmtPct(M.conco.c50[i]) }]
+      : statRows(M, i);
+    g.append("rect").attr("x", px + ML).attr("y", base - rowH).attr("width", iw).attr("height", rowH)
+      .attr("fill", "transparent")
+      .on("mousemove", evt => {
+        ridge.attr("fill-opacity", 0.95);
+        showTooltip(evt.clientX, evt.clientY, t + " — " + spec.title.toLowerCase(), color, rows);
+      })
+      .on("mouseleave", () => { ridge.attr("fill-opacity", 0.72); hideTooltip(); });
+  });
+  return g;
+}
+
+const DRAW = {
+  box: drawBoxPanel, share: drawSharePanel,
+  ridge:  (svg, spec, px, pw, py, ph) => drawRidgePanel(svg, spec, px, pw, py, ph, "dens",  true),
+  ridgew: (svg, spec, px, pw, py, ph) => drawRidgePanel(svg, spec, px, pw, py, ph, rankZoom ? "densrz" : "densr", false),
+};
+
+function draw(){
+  d3.select("#viz").selectAll("*").remove();
+  hideTooltip();
+  const rect = vizContainer.getBoundingClientRect();
+  const cw = Math.max(320, rect.width), H = Math.max(200, rect.height);
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const svg = d3.select("#viz").append("svg")
+    .attr("viewBox", `0 0 ${cw} ${H}`).attr("width", cw).attr("height", H);
+
+  // the two metric panels sit side by side; stacked only when the frame is too narrow
+  const sideBySide = cw >= 640, GAP = 18;
+  const panels = sideBySide
+    ? PANELS.map((p, i) => [p, i * ((cw - GAP) / 2 + GAP), (cw - GAP) / 2, 0, H])
+    : PANELS.map((p, i) => [p, 0, cw, i * H / 2, H / 2]);
+  const groups = panels.map(([p, px, pw, py, ph]) => DRAW[currentView](svg, p, px, pw, py, ph));
+
+  if (firstRender && !reducedMotion)             // fade in on first render only
+    for (const g of groups)
+      g.attr("opacity", 0).transition().duration(850).ease(d3.easeCubicOut).attr("opacity", 1);
+}
+
+buildControls();
+setCaption();
+render();
+
+let resizeTimer = null;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); });
+if (typeof ResizeObserver !== "undefined") {
+  let first = true;                              // observe() fires once immediately; keep the entry animation
+  new ResizeObserver(() => { if (first) { first = false; return; } clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); })
+    .observe(vizContainer);
+}
+</script></body></html>

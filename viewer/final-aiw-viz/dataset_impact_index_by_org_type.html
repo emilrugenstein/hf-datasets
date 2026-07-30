@@ -94,7 +94,7 @@ const X_TICKS = [0.125, 0.25, 0.5, 1, 2, 4];
 const PARITY = 1;                                     // bars diverge from here
 const THIN_N = 10;                                    // below this the bar is drawn dashed + flagged
 const SNAPSHOT = "22 July 2026";
-const SOURCE_NAME = "Hugging Face Hub snapshot, " + SNAPSHOT + " — CEPS analysis";
+const SOURCE_NAME = "Hugging Face (" + SNAPSHOT + ")";
 const SOURCE_HREF = "https://huggingface.co/datasets";
 
 // One object per (organisation type x scope). dl/lk/ad/mdl/ax are the indices;
@@ -249,7 +249,7 @@ function render(){
   if (!compact)
     g.append("text").attr("x", iw/2).attr("y", ih + fs*3.3).attr("text-anchor", "middle")
       .attr("font-size", fs).attr("font-weight", 700).attr("fill", "#0f172a")
-      .text("Outcome index — share of the outcome ÷ share of datasets (log scale)");
+      .text("Outcome index: share of the outcome ÷ share of datasets (log scale)");
 
   // separator between metric groups, so the five blocks read as small multiples
   g.append("g").selectAll("line").data(METRICS.slice(1)).join("line")
@@ -289,16 +289,16 @@ function render(){
         tooltip.style("display", "block")
           .style("left", Math.min(evt.clientX + 12, window.innerWidth - 250) + "px")
           .style("top", (evt.clientY + 14) + "px")
-          .html('<span class="tt-title">' + TYPE_LABEL[b.type] + " — " + b.metric.label + '</span>'
+          .html('<span class="tt-title">' + TYPE_LABEL[b.type] + " – " + b.metric.label + '</span>'
             + "Index: <b>" + fmtIdx(b.value) + "</b> "
             + (b.zero ? "" : (over ? "above" : "below") + " parity") + "<br>"
             + rawLine(b) + "<br>"
             + '<span>' + b.metric.desc + '</span><br>'
             + '<span>' + fmtInt(d.n) + " of " + fmtInt(d.pop) + " datasets"
-            + (currentScope === "top" ? " — " + (d.n/10).toFixed(1) + "% of the top 1,000" : "")
+            + (currentScope === "top" ? " (" + (d.n/10).toFixed(1) + "% of the top 1,000)" : "")
             + '</span>'
-            + (b.thin ? '<br><span>Fewer than ' + THIN_N + " datasets — not robust</span>" : "")
-            + (b.zero ? '<br><span>Exactly zero — pinned to the axis floor</span>' : ""));
+            + (b.thin ? '<br><span>Fewer than ' + THIN_N + " datasets, not robust</span>" : "")
+            + (b.zero ? '<br><span>Exactly zero, pinned to the axis floor</span>' : ""));
       })
       .on("mouseleave", () => tooltip.style("display", "none"));
   }

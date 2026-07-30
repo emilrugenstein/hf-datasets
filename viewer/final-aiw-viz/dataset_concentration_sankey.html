@@ -48,7 +48,7 @@
 const SHOW_CONTAINER_2 = 1, SHOW_CONTAINER_3 = 1, SHOW_CONTAINER_4 = 1, SHOW_CONTAINER_5 = 0;
 const SHOW_TOOLTIP = 1;
 const BREAKPOINT_COMPACT = 500;                       // px; MUST equal --breakpoint-compact
-const SOURCE_NAME = "Hugging Face hub weekly snapshots (hfmlsoc), 22 July 2026";
+const SOURCE_NAME = "Hugging Face (22 July 2026)";
 const SOURCE_HREF = "https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots";
 
 /* Org-type palette: exact hex of the hub notebook's ORG_TYPE_COLORS (seaborn colorblind). */
@@ -56,7 +56,7 @@ const COLORS = {
   company: '#DE8F05', community: '#029E73', 'non-profit': '#D55E00', university: '#CC78BC',
   classroom: '#CA9161', government: '#0173B2', individual: '#B3B3B3',
 };
-/* Fixed vertical order in every column — organisations on top (by downloads), individuals last.
+/* Fixed vertical order in every column - organisations on top (by downloads), individuals last.
    Deliberately NOT re-sorted per column: parallel ribbons make the widening visible. */
 const TYPE_ORDER = ['company', 'community', 'non-profit', 'university', 'classroom', 'government', 'individual'];
 const GAP = 3;                                        // uniform white gap between every band

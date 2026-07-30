@@ -68,7 +68,7 @@ const COUNTRY_REGION = { "United States":"United States", China:"China", Unknown
                          Netherlands:"Europe", Germany:"Europe",
                          Japan:"Rest of World", Singapore:"Rest of World", Canada:"Rest of World" };
 const INK = "#0f172a", MUTED = "#475569";
-const SOURCE_NAME = "Hugging Face hub weekly snapshots (hfmlsoc)";
+const SOURCE_NAME = "Hugging Face (22 July 2026)";
 const SOURCE_HREF = "https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots";
 const FOOTNOTE = "Top 10 owner countries, top 1,000 datasets by all-time downloads; 27 smaller countries (92M) "
   + "not shown. Unknown = no public evidence, never inferred from names/language. Snapshot 2026-07-22.";
@@ -274,7 +274,7 @@ function draw(){
     svg.append("text")
       .attr("x", xR0 + iwR).attr("y", H - 8).attr("text-anchor", "end")
       .attr("font-size", 11).attr("font-weight", 700).attr("fill", MUTED)
-      .text("dataset size, log scale — bar = median, whisker = IQR");
+      .text("dataset size, log scale (bar = median, whisker = IQR)");
   }
 
   // baselines

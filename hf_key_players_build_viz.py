@@ -322,7 +322,7 @@ const EXT_BOTTOM = Math.sin(64.2857 * Math.PI / 180) * R_RING + 0.5 * 1.07;
 const COL_CHOICES = [1, 2, 4];                        // cluster grid arrangements to try
 
 const SNAPSHOT = "__SNAPSHOT__";
-const SOURCE_NAME = "CEPS analysis of the Hugging Face Hub API, " + SNAPSHOT;
+const SOURCE_NAME = "Hugging Face (" + SNAPSHOT + ")";
 const SOURCE_HREF = "https://huggingface.co/docs/hub/api";
 
 /* DATA: one object per organisation type, `members` ordered by dl30 desc (the seven

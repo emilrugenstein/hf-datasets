@@ -1,0 +1,342 @@
+<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Which organisations punch above their weight on Hugging Face?</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root { --breakpoint-compact: 500px; }            /* MUST equal BREAKPOINT_COMPACT in JS */
+  html,body { margin:0; height:100vh; width:100vw; overflow:hidden; color:#0f172a;
+    font-family: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Helvetica,Arial,sans-serif; }
+  .viz-grid { display:grid; height:100vh; box-sizing:border-box; padding-bottom:clamp(8px,2vh,18px);
+    grid-template-rows:16fr 1fr 1fr; grid-template-columns:1fr 1fr; }
+  #container1 { grid-column:1 / -1; } #viz { width:100%; height:100%; }
+  #container5 { grid-column:1 / -1; display:flex; align-items:center; justify-content:center; padding:0 20px; }
+  #container2 { grid-column:1 / -1; display:flex; align-items:center; justify-content:center; padding:0 20px; }
+  #legend { display:flex; align-items:center; justify-content:center; flex-wrap:wrap;
+    gap:clamp(6px,1.4vw,20px); font-size:clamp(8px,1.35vw,13px); color:#475569; }
+  #legend .lg { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+  #container3 { font-size:clamp(5px,1.6vw,16px); display:flex; align-items:center; justify-content:flex-start;
+    padding:0 20px; overflow:hidden; min-width:0; }
+  #container3 #source-text { font-weight:600; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  #container3 #source-text a { color:#2756d3; text-decoration:underline; }
+  #container4 { display:flex; justify-content:flex-end; align-items:center; padding:0 20px; overflow:hidden; min-width:0; }
+  #container4 a { height:100%; display:flex; align-items:center; }
+  #container4 img { height:100%; width:auto; max-height:100%; max-width:100%; object-fit:contain; }
+  #tooltip { position:fixed; pointer-events:none; display:none; background:#fff;
+    border:1px solid #DBDBDB; padding:6px 8px; font-size:12px; border-radius:4px; }
+  #tooltip .tt-title { display:block; font-weight:700; margin-bottom:3px; }
+  #tooltip span { color:#475569; }
+  /* segmented switch (house style) */
+  .selector-group { display:flex; align-items:center; justify-content:center;
+    gap:clamp(2px,0.5vw,6px); padding:clamp(2px,0.4vw,4px);
+    border-radius:6px; border:1px solid rgba(17,24,39,0.15); background:#f8fafc;
+    max-width:100%; flex-shrink:1; min-width:0; }
+  .selector-button { border:none; background:transparent; border-radius:6px;
+    padding:clamp(4px,0.8vh,8px) clamp(8px,1.5vw,14px);
+    font-size:clamp(9px,1.4vw,13px); font-weight:600; color:#475569;
+    cursor:pointer; white-space:nowrap; min-width:0;
+    transition:background 0.2s ease, color 0.2s ease; }
+  .selector-button.active { background:#2756d3; color:#fff; }
+  /* Short iframe / "snapshot" embed: drop ALL chrome; chart alone fills the frame. */
+  @media (max-height:500px){
+    .viz-grid { grid-template-rows:1fr !important; grid-template-columns:1fr !important; padding-bottom:0; }
+    #container1 { grid-row:1 !important; grid-column:1 / -1 !important; }
+    #container2,#container3,#container4,#container5 { display:none !important; }
+  }
+</style></head><body>
+<div class="viz-grid">
+  <div id="container1"><div id="viz"></div></div>
+  <div id="container5"><div class="selector-group" id="scopeFilter"></div></div>
+  <div id="container2"><div id="legend"></div></div>
+  <div id="container3"><span id="source-text"></span></div>
+  <div id="container4"><a href="https://aiworld.eu/" target="_blank" rel="noopener"><img src="https://aiworld.eu/logo-transparent.svg" alt="AI World"></a></div>
+</div>
+<div id="tooltip"></div>
+<script>
+// ---- CONFIG: declare everything; nothing implicit ----
+const SHOW_CONTAINER_2 = 1, SHOW_CONTAINER_3 = 1, SHOW_CONTAINER_4 = 1, SHOW_CONTAINER_5 = 1;
+const SHOW_TOOLTIP = 1;
+const BREAKPOINT_COMPACT = 500;                       // px; MUST equal --breakpoint-compact
+
+// One colour per organisation type (colour-blind-safe set reused across the HF project).
+const COLORS = { company:"#DE8F05", university:"#CC78BC", "non-profit":"#D55E00",
+                 community:"#029E73", classroom:"#CA9161", government:"#0173B2" };
+const TYPE_LABEL = { company:"Company", university:"University", "non-profit":"Non-profit",
+                     community:"Community", classroom:"Classroom", government:"Government" };
+// Fixed display order (by the all-datasets downloads index) so the two scopes stay comparable.
+const TYPE_ORDER = ["company", "university", "community", "non-profit", "classroom", "government"];
+
+const SCOPES = [                                      // segmented switch, in display order
+  { key:"all", btn:"All datasets", label:"all datasets" },
+  { key:"top", btn:"Top 1,000 by downloads", label:"the 1,000 most-downloaded datasets" },
+];
+// ?scope=top opens on the top-1,000 view, so a story can embed either state directly.
+const URL_SCOPE = new URLSearchParams(location.search).get("scope");
+let currentScope = SCOPES.some(s => s.key === URL_SCOPE) ? URL_SCOPE : "all";
+
+// One row per metric. `share` metrics are (outcome share / dataset share); `rate`
+// metrics are (type value / scope-wide value) -- the same normalisation applied to
+// a per-dataset quantity, so both are read against the same 1x parity line.
+const METRICS = [
+  { key:"dl",  label:"All-time downloads", kind:"share", raw:"downloads",
+    desc:"share of downloads ÷ share of datasets" },
+  { key:"lk",  label:"Likes",              kind:"share", raw:"likes",
+    desc:"share of likes ÷ share of datasets" },
+  { key:"ad",  label:"Model adoption",     kind:"share", raw:"adoption",
+    desc:"share of models declaring a dataset as training data ÷ share of datasets" },
+  { key:"mdl", label:"Median downloads",   kind:"rate",  raw:"medianDl",
+    desc:"type median downloads ÷ scope-wide median" },
+  { key:"ax",  label:"arXiv-link rate",    kind:"rate",  raw:"arxivRate",
+    desc:"type share of datasets citing an arXiv paper ÷ scope-wide share" },
+];
+
+const X_DOMAIN = [1/16, 4];                           // log ratio, fixed so the two scopes stay comparable
+const X_TICKS = [0.125, 0.25, 0.5, 1, 2, 4];
+const PARITY = 1;                                     // bars diverge from here
+const THIN_N = 10;                                    // below this the bar is drawn dashed + flagged
+const SNAPSHOT = "22 July 2026";
+const SOURCE_NAME = "Hugging Face Hub snapshot, " + SNAPSHOT + " — CEPS analysis";
+const SOURCE_HREF = "https://huggingface.co/datasets";
+
+// One object per (organisation type x scope). dl/lk/ad/mdl/ax are the indices;
+// n = datasets of that type in the scope, pop = all its datasets in the snapshot;
+// the remaining fields are the raw values behind each index, for the tooltip.
+/*__DATA_START__*/
+const DATA = [
+  { type:"company", scope:"all", n:29198, pop:29198, dl:1.7750, lk:2.2241, ad:1.7676, mdl:1.1971, ax:1.0883, downloads:510999328, likes:109137, adoption:32238, medianDl:334, arxivRate:0.0904 },
+  { type:"university", scope:"all", n:23071, pop:23071, dl:1.1487, lk:1.1296, ad:1.0807, mdl:1.1075, ax:1.7148, downloads:261309912, likes:43797, adoption:15574, medianDl:309, arxivRate:0.1425 },
+  { type:"community", scope:"all", n:59347, pop:59347, dl:0.8682, lk:0.7372, ad:0.8476, mdl:0.7563, ax:0.8143, downloads:508001732, likes:73531, adoption:31422, medianDl:211, arxivRate:0.0677 },
+  { type:"non-profit", scope:"all", n:54542, pop:54542, dl:0.7425, lk:0.6457, ad:0.7949, mdl:0.8961, ax:0.9200, downloads:399285826, likes:59189, adoption:27082, medianDl:250, arxivRate:0.0764 },
+  { type:"classroom", scope:"all", n:4039, pop:4039, dl:0.1157, lk:0.1734, ad:0.1356, mdl:0.9211, ax:0.1967, downloads:4606379, likes:1177, adoption:342, medianDl:257, arxivRate:0.0163 },
+  { type:"government", scope:"all", n:693, pop:693, dl:0.1073, lk:0.3125, ad:0.2056, mdl:0.6380, ax:0.3647, downloads:733279, likes:364, adoption:89, medianDl:178, arxivRate:0.0303 },
+  { type:"company", scope:"top", n:274, pop:29198, dl:1.1717, lk:1.2147, ad:1.2255, mdl:0.9368, ax:0.9580, downloads:432485396, likes:32512, adoption:13170, medianDl:344373, arxivRate:0.4599 },
+  { type:"university", scope:"top", n:186, pop:23071, dl:0.8062, lk:0.7839, ad:0.7964, mdl:0.8852, ax:1.0977, downloads:202003875, likes:14243, adoption:5810, medianDl:325403, arxivRate:0.5269 },
+  { type:"community", scope:"top", n:263, pop:59347, dl:1.1436, lk:1.1281, ad:0.9693, mdl:1.0964, ax:0.9268, downloads:405172682, likes:28984, adoption:9998, medianDl:403040, arxivRate:0.4449 },
+  { type:"non-profit", scope:"top", n:272, pop:54542, dl:0.8366, lk:0.8240, ad:0.9600, mdl:1.1203, ax:1.0646, downloads:306543320, likes:21894, adoption:10241, medianDl:411836, arxivRate:0.5110 },
+  { type:"classroom", scope:"top", n:4, pop:4039, dl:0.1324, lk:0.0077, ad:0.0064, mdl:0.4561, ax:0.0000, downloads:713402, likes:3, adoption:1, medianDl:167668, arxivRate:0.0000 },
+  { type:"government", scope:"top", n:1, pop:693, dl:0.1511, lk:0.5323, ad:0.0000, mdl:0.5536, ax:0.0000, downloads:203526, likes:52, adoption:0, medianDl:203526, arxivRate:0.0000 },
+];
+/*__DATA_END__*/
+
+document.getElementById("source-text").innerHTML =
+  'Source: <a href="'+SOURCE_HREF+'" target="_blank" rel="noopener">'+SOURCE_NAME+'</a>';
+
+// Show only the footer rows whose flag is on, then recompute grid rows.
+(function applyContainerVisibility(){
+  const grid = document.querySelector(".viz-grid"), c = n => document.getElementById("container"+n);
+  const c2=c(2), c3=c(3), c4=c(4), c5=c(5);
+  if (c2 && !SHOW_CONTAINER_2) c2.style.display="none";
+  if (c3 && !SHOW_CONTAINER_3) c3.style.display="none";
+  if (c4 && !SHOW_CONTAINER_4) c4.style.display="none";
+  if (c5 && !SHOW_CONTAINER_5) c5.style.display="none";
+  const rowCtrl=SHOW_CONTAINER_5, rowLegend=SHOW_CONTAINER_2, rowFooter=SHOW_CONTAINER_3||SHOW_CONTAINER_4;
+  const rows=[]; let r=1;
+  rows.push((20-(rowCtrl?1:0)-(rowLegend?1:0)-(rowFooter?1:0))+"fr");
+  if (rowCtrl)   { rows.push("1fr"); r++; if (c5) c5.style.gridRow=r; }
+  if (rowLegend) { rows.push("1fr"); r++; if (c2) c2.style.gridRow=r; }
+  if (rowFooter) { rows.push("1fr"); r++;
+    if (SHOW_CONTAINER_3 && c3) c3.style.gridRow=r;
+    if (SHOW_CONTAINER_4 && c4) c4.style.gridRow=r;
+    if (SHOW_CONTAINER_3 && !SHOW_CONTAINER_4 && c3) c3.style.gridColumn="1 / span 2";
+    if (!SHOW_CONTAINER_3 && SHOW_CONTAINER_4 && c4) c4.style.gridColumn="1 / span 2";
+  }
+  grid.style.gridTemplateRows = rows.join(" ");
+  c(1).style.gridRow = "1";
+})();
+
+// ---- helpers ----
+const fmtInt = d3.format(",");
+const fmtBig = d3.format(".3~s");                      // 494M downloads
+const fmtIdx = v => (v >= 10 ? d3.format(".0f")(v) : d3.format(".2f")(v)) + "×";
+function tickLabel(t){ return (t < 1 ? String(t) : d3.format(".0f")(t)) + "×"; }
+function fmtPct(v){ return (100*v < 1 ? (100*v).toFixed(2) : (100*v).toFixed(1)) + "%"; }
+
+const measure = (() => {                               // text width, for dynamic margins
+  const ctx = document.createElement("canvas").getContext("2d");
+  return (txt, px, weight) => { ctx.font = (weight||400)+" "+px+"px system-ui, sans-serif"; return ctx.measureText(txt).width; };
+})();
+
+const tooltip = d3.select("#tooltip");
+const vizContainer = document.getElementById("viz");
+let shouldAnimate = true;   // true on first render and on a scope switch, false on resize redraws
+
+// One drawable bar per (metric x type) for the active scope. An index of 0 (no
+// arXiv links, no adopting models) cannot sit on a log axis, so it is flagged and
+// pinned to the axis floor rather than dropped.
+function barsFor(scope){
+  const byType = new Map(DATA.filter(d => d.scope === scope).map(d => [d.type, d]));
+  const bars = [];
+  for (const m of METRICS)
+    for (const t of TYPE_ORDER){
+      const row = byType.get(t);
+      if (!row) continue;
+      const v = row[m.key];
+      bars.push({ metric:m, type:t, row, value:v, zero:!(v > 0),
+                  plot:Math.min(X_DOMAIN[1], Math.max(X_DOMAIN[0], v > 0 ? v : X_DOMAIN[0])),
+                  thin:row.n < THIN_N, fill:COLORS[t] });
+    }
+  return bars;
+}
+
+function buildScopeFilter(){
+  const box = document.getElementById("scopeFilter");
+  box.innerHTML = "";
+  for (const s of SCOPES){
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "selector-button"; b.textContent = s.btn;
+    b.dataset.scope = s.key;
+    b.title = "Show " + s.label;
+    b.setAttribute("aria-label", "Show " + s.label);
+    b.addEventListener("click", () => {
+      if (currentScope === s.key) return;              // no redundant redraw
+      currentScope = s.key; updateScopeState(); shouldAnimate = true; render();
+    });
+    box.appendChild(b);
+  }
+  updateScopeState();
+}
+function updateScopeState(){
+  document.querySelectorAll("#scopeFilter .selector-button").forEach(b =>
+    b.classList.toggle("active", b.dataset.scope === currentScope));
+}
+
+function buildLegend(){
+  const scope = SCOPES.find(s => s.key === currentScope);
+  const swatch = t =>
+    '<svg width="14" height="14"><rect width="14" height="14" rx="2" fill="'+COLORS[t]+'"></rect></svg>';
+  const anyThin = barsFor(currentScope).some(b => b.thin);
+  document.getElementById("legend").innerHTML =
+    TYPE_ORDER.map(t => '<span class="lg">' + swatch(t) + TYPE_LABEL[t] + '</span>').join("")
+    + '<span class="lg">1× = proportional to share of datasets · individuals excluded · '
+    + scope.label + '</span>'
+    + (anyThin ? '<span class="lg">Dashed = n &lt; ' + THIN_N + ', not robust</span>' : '');
+}
+
+function render(){
+  d3.select("#viz").selectAll("*").remove();
+  const rect = vizContainer.getBoundingClientRect();
+  const W = Math.max(240, rect.width), H = Math.max(160, rect.height);
+  const compact = window.matchMedia(`(max-height:${BREAKPOINT_COMPACT}px)`).matches;
+  const animate = shouldAnimate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  shouldAnimate = false;
+
+  const bars = barsFor(currentScope);
+  const fs = Math.max(8, Math.min(13, W/68));                   // tick / value size
+  const fsName = Math.max(9, Math.min(15, W/54));               // metric names
+  const nameW = Math.max(...METRICS.map(m => measure(m.label, fsName, 700)));
+  const valW = Math.max(...bars.map(b => measure(fmtIdx(b.value), fs, 700)));
+  const M = { top: Math.round(fs*0.8), right: Math.round(valW + fs*1.2),
+              bottom: Math.round(fs*(compact ? 2.2 : 3.8)), left: Math.round(nameW + fs*1.4) };
+  const iw = Math.max(60, W - M.left - M.right), ih = Math.max(60, H - M.top - M.bottom);
+
+  const svg = d3.select("#viz").append("svg").attr("width", W).attr("height", H);
+  const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+  const x = d3.scaleLog().domain(X_DOMAIN).range([0, iw]);
+  const yGroup = d3.scaleBand().domain(METRICS.map(m => m.key)).range([0, ih]).paddingInner(0.28);
+  const yBar = d3.scaleBand().domain(TYPE_ORDER).range([0, yGroup.bandwidth()]).padding(0.18);
+  const bh = Math.max(3, Math.min(yBar.bandwidth(), 22));
+  const barY = b => yGroup(b.metric.key) + yBar(b.type) + (yBar.bandwidth() - bh)/2;
+
+  // gridlines, one per tick; the 1x parity line is drawn separately and solid
+  g.append("g").selectAll("line").data(X_TICKS.filter(t => t !== PARITY)).join("line")
+    .attr("x1", d => x(d)).attr("x2", d => x(d)).attr("y1", 0).attr("y2", ih)
+    .attr("stroke", "#DBDBDB").attr("stroke-dasharray", "2,3").attr("stroke-width", 1);
+  g.append("g").selectAll("text").data(X_TICKS).join("text")
+    .attr("x", d => x(d)).attr("y", ih + fs*1.6).attr("text-anchor", "middle")
+    .attr("font-size", fs).attr("font-weight", 600)
+    .attr("fill", d => d === PARITY ? "#0f172a" : "#475569")
+    .text(tickLabel);
+  if (!compact)
+    g.append("text").attr("x", iw/2).attr("y", ih + fs*3.3).attr("text-anchor", "middle")
+      .attr("font-size", fs).attr("font-weight", 700).attr("fill", "#0f172a")
+      .text("Outcome index — share of the outcome ÷ share of datasets (log scale)");
+
+  // separator between metric groups, so the five blocks read as small multiples
+  g.append("g").selectAll("line").data(METRICS.slice(1)).join("line")
+    .attr("x1", -M.left + fs*0.4).attr("x2", iw)
+    .attr("y1", m => yGroup(m.key) - yGroup.step()*yGroup.paddingInner()/2)
+    .attr("y2", m => yGroup(m.key) - yGroup.step()*yGroup.paddingInner()/2)
+    .attr("stroke", "#EDEDED").attr("stroke-width", 1);
+
+  // metric names on the left, centred on their group
+  g.append("g").selectAll("text").data(METRICS).join("text")
+    .attr("x", -fs*1.0).attr("y", m => yGroup(m.key) + yGroup.bandwidth()/2 + fsName*0.35)
+    .attr("text-anchor", "end").attr("font-size", fsName).attr("font-weight", 700).attr("fill", "#0f172a")
+    .text(m => m.label);
+
+  const x1 = x(PARITY);
+  const barSel = g.append("g").selectAll("rect").data(bars).join("rect")
+    .attr("y", barY).attr("height", bh)
+    .attr("fill", b => b.fill)
+    .attr("opacity", b => b.thin ? 0.45 : 1)
+    .attr("stroke", b => b.thin ? b.fill : "none")
+    .attr("stroke-width", b => b.thin ? 1.2 : 0)
+    .attr("stroke-dasharray", b => b.thin ? "4,3" : null)
+    .attr("x", animate ? x1 : b => Math.min(x1, x(b.plot)))
+    .attr("width", animate ? 0 : b => Math.max(1, Math.abs(x(b.plot) - x1)));
+
+  if (SHOW_TOOLTIP){
+    const rawLine = b => {
+      const d = b.row;
+      if (b.metric.key === "ax")  return "arXiv-link rate: <b>" + fmtPct(d.arxivRate) + "</b>";
+      if (b.metric.key === "mdl") return "Median downloads: <b>" + fmtInt(d.medianDl) + "</b>";
+      if (b.metric.key === "ad")  return "Adopting models: <b>" + fmtInt(d.adoption) + "</b>";
+      if (b.metric.key === "lk")  return "Likes: <b>" + fmtBig(d.likes) + "</b>";
+      return "Downloads: <b>" + fmtBig(d.downloads) + "</b>";
+    };
+    barSel.on("mousemove", (evt, b) => {
+        const d = b.row, over = b.value > PARITY;
+        tooltip.style("display", "block")
+          .style("left", Math.min(evt.clientX + 12, window.innerWidth - 250) + "px")
+          .style("top", (evt.clientY + 14) + "px")
+          .html('<span class="tt-title">' + TYPE_LABEL[b.type] + " — " + b.metric.label + '</span>'
+            + "Index: <b>" + fmtIdx(b.value) + "</b> "
+            + (b.zero ? "" : (over ? "above" : "below") + " parity") + "<br>"
+            + rawLine(b) + "<br>"
+            + '<span>' + b.metric.desc + '</span><br>'
+            + '<span>' + fmtInt(d.n) + " of " + fmtInt(d.pop) + " datasets"
+            + (currentScope === "top" ? " — " + (d.n/10).toFixed(1) + "% of the top 1,000" : "")
+            + '</span>'
+            + (b.thin ? '<br><span>Fewer than ' + THIN_N + " datasets — not robust</span>" : "")
+            + (b.zero ? '<br><span>Exactly zero — pinned to the axis floor</span>' : ""));
+      })
+      .on("mouseleave", () => tooltip.style("display", "none"));
+  }
+
+  // parity line last, so it sits on top of the bars
+  g.append("line").attr("x1", x1).attr("x2", x1).attr("y1", 0).attr("y2", ih)
+    .attr("stroke", "#111111").attr("stroke-width", 1.4);
+
+  // index value at each bar's outer tip
+  const vals = g.append("g").selectAll("text").data(bars).join("text")
+    .attr("x", b => x(b.plot) >= x1 ? Math.min(x(b.plot) + fs*0.4, iw + M.right - valW) : x(b.plot) - fs*0.4)
+    .attr("y", b => barY(b) + bh/2 + fs*0.36)
+    .attr("text-anchor", b => x(b.plot) >= x1 ? "start" : "end")
+    .attr("font-size", fs*0.92).attr("font-weight", 700)
+    .attr("fill", b => b.thin ? "#475569" : "#0f172a")
+    .attr("opacity", animate ? 0 : 1)
+    .text(b => b.zero ? "0" : fmtIdx(b.value));
+
+  if (animate){
+    barSel.transition().duration(850).ease(d3.easeCubicOut)
+      .attr("x", b => Math.min(x1, x(b.plot)))
+      .attr("width", b => Math.max(1, Math.abs(x(b.plot) - x1)));
+    vals.transition().delay(600).duration(300).attr("opacity", 1);
+  }
+  buildLegend();     // the legend names the active scope, so it follows every render
+}
+
+try {
+  buildScopeFilter();
+  render();
+} catch (err){
+  d3.select("body").append("div")
+    .attr("style", "position:fixed;bottom:8px;left:8px;background:#fee;border:1px solid #de2d26;color:#7f1d1d;padding:6px 8px;font-size:12px;border-radius:4px")
+    .text("Chart failed to render: " + err.message);
+}
+
+let resizeTimer = null;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); });
+if (typeof ResizeObserver !== "undefined")
+  new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); }).observe(vizContainer);
+</script></body></html>

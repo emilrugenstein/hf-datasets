@@ -79,26 +79,27 @@ const SOURCE_HREF = "https://huggingface.co/datasets";
 // Two bars per organisation type, as in the trends viewer: unweighted (one vote per
 // dataset) and weighted by total downloads (one vote per download).
 const SERIES_ORDER = [
-  { key:"u", mean:"mean",  sd:"sd",  shade:1,   label:"per dataset (unweighted)" },
-  { key:"w", mean:"wmean", sd:"wsd", shade:0.7, label:"weighted by total downloads" },
+  { key:"u", mid:"med",  lo:"q1",  hi:"q3",  shade:1,   label:"per dataset (unweighted)" },
+  { key:"w", mid:"wmed", lo:"wq1", hi:"wq3", shade:0.7, label:"weighted by total downloads" },
 ];
 
-// One object per (organisation type x scope). mean/sd are of log10(repo bytes, mainSize),
-// wmean/wsd the same weighted by downloadsAllTime; n = datasets with a size in that scope,
-// pop = all datasets of that type in the snapshot, dl = their total downloads.
+// One object per (organisation type x scope), all in log10(repo bytes, mainSize):
+// med/q1/q3 = median and quartiles across datasets; wmed/wq1/wq3 = the same under
+// download weights (wmed = the size at which half of all downloads sit below).
+// n = datasets with a size in that scope, pop = all datasets of that type, dl = their downloads.
 const DATA = [
-  { type:"government", scope:"all", n:724,   pop:725,   mean:6.5624,  sd:1.9278, wmean:9.8227,  wsd:2.2495, dl:736490 },
-  { type:"community",  scope:"all", n:61805, pop:61887, mean:7.3201,  sd:1.8730, wmean:9.7741,  wsd:2.5145, dl:494298954 },
-  { type:"non-profit", scope:"all", n:65570, pop:65622, mean:6.4690,  sd:2.0295, wmean:9.2164,  wsd:2.6257, dl:392183112 },
-  { type:"classroom",  scope:"all", n:4549,  pop:4550,  mean:7.6036,  sd:1.8552, wmean:9.0065,  wsd:1.6998, dl:4877857 },
-  { type:"company",    scope:"all", n:30564, pop:30809, mean:6.9510,  sd:2.3637, wmean:8.7181,  wsd:2.2215, dl:505886190 },
-  { type:"university", scope:"all", n:24014, pop:24041, mean:7.5459,  sd:2.0112, wmean:8.6384,  wsd:2.1198, dl:254001027 },
-  { type:"government", scope:"top", n:1,     pop:725,   mean:12.0184, sd:0.0000, wmean:12.0184, wsd:0.0000, dl:203526 },
-  { type:"community",  scope:"top", n:267,   pop:61887, mean:9.9915,  sd:2.5094, wmean:9.9255,  wsd:2.5918, dl:393362960 },
-  { type:"classroom",  scope:"top", n:4,     pop:4550,  mean:9.4499,  sd:0.9692, wmean:9.5323,  wsd:0.9247, dl:713402 },
-  { type:"non-profit", scope:"top", n:264,   pop:65622, mean:9.3898,  sd:2.7388, wmean:9.4275,  wsd:2.7332, dl:299831522 },
-  { type:"company",    scope:"top", n:278,   pop:30809, mean:9.0532,  sd:2.8369, wmean:8.7357,  wsd:2.1922, dl:432237863 },
-  { type:"university", scope:"top", n:186,   pop:24041, mean:9.3470,  sd:2.5171, wmean:8.5331,  wsd:2.0449, dl:195454168 },
+  { type:"government", scope:"all", n:724,   pop:725,   med:6.3065,  q1:5.1720, q3:7.9670,  wmed:10.0936, wq1:8.8591, wq3:12.0184, dl:736490 },
+  { type:"community",  scope:"all", n:61805, pop:61887, med:7.3209,  q1:6.1678, q3:8.6604,  wmed:9.9306,  wq1:8.6268, wq3:11.3984, dl:494298954 },
+  { type:"classroom",  scope:"all", n:4549,  pop:4550,  med:7.8344,  q1:6.4959, q3:8.8949,  wmed:9.3134,  wq1:8.0932, wq3:10.0934, dl:4877857 },
+  { type:"company",    scope:"all", n:30564, pop:30809, med:7.0910,  q1:4.9002, q3:8.7624,  wmed:8.6082,  wq1:7.1922, wq3:9.8440,  dl:505886190 },
+  { type:"non-profit", scope:"all", n:65570, pop:65622, med:6.1744,  q1:4.5035, q3:8.0056,  wmed:8.4314,  wq1:7.1612, wq3:11.7268, dl:392183112 },
+  { type:"university", scope:"all", n:24014, pop:24041, med:7.5322,  q1:6.2838, q3:8.9380,  wmed:8.2103,  wq1:7.1536, wq3:10.0754, dl:254001027 },
+  { type:"government", scope:"top", n:1,     pop:725,   med:12.0184, q1:12.0184, q3:12.0184, wmed:12.0184, wq1:12.0184, wq3:12.0184, dl:203526 },
+  { type:"community",  scope:"top", n:267,   pop:61887, med:10.3589, q1:8.3496, q3:12.0359, wmed:10.3362, wq1:9.0686, wq3:11.5934, dl:393362960 },
+  { type:"classroom",  scope:"top", n:4,     pop:4550,  med:9.7429,  q1:7.8108, q3:9.9237,  wmed:9.9237,  wq1:9.7429, wq3:10.3222, dl:713402 },
+  { type:"non-profit", scope:"top", n:264,   pop:65622, med:9.4754,  q1:6.9931, q3:11.9234, wmed:8.4314,  wq1:6.9629, wq3:12.4836, dl:299831522 },
+  { type:"university", scope:"top", n:186,   pop:24041, med:9.4425,  q1:7.3446, q3:11.5845, wmed:8.2103,  wq1:7.1317, wq3:9.1392,  dl:195454168 },
+  { type:"company",    scope:"top", n:278,   pop:30809, med:9.0543,  q1:6.6743, q3:11.6013, wmed:8.5606,  wq1:7.1922, wq3:9.8440,  dl:432237863 },
 ];
 
 document.getElementById("source-text").innerHTML =
@@ -148,11 +149,11 @@ function darker(hex, f){                               // multiply RGB — the w
 
 // One drawable bar per (type x series), sorted so the download-weighted bar drives the order.
 function barsFor(scope){
-  const rows = DATA.filter(d => d.scope === scope).slice().sort((a,b) => b.wmean - a.wmean);
+  const rows = DATA.filter(d => d.scope === scope).slice().sort((a,b) => b.wmed - a.wmed);
   const bars = [];
   for (const d of rows)
     for (const s of SERIES_ORDER)
-      bars.push({ row:d, series:s, type:d.type, mean:d[s.mean], sd:d[s.sd],
+      bars.push({ row:d, series:s, type:d.type, mid:d[s.mid], lo:d[s.lo], hi:d[s.hi],
                   fill:s.shade === 1 ? COLORS[d.type] : darker(COLORS[d.type], s.shade) });
   return { rows, bars };
 }
@@ -198,8 +199,8 @@ function buildLegend(){
     + '<span class="lg"><svg width="30" height="10"><line x1="2" x2="28" y1="5" y2="5" stroke="#0f172a" stroke-width="1.4"></line>'
     + '<line x1="2" x2="2" y1="1" y2="9" stroke="#0f172a" stroke-width="1.4"></line>'
     + '<line x1="28" x2="28" y1="1" y2="9" stroke="#0f172a" stroke-width="1.4"></line></svg>'
-    + '±1 SD of log₁₀(size)</span>'
-    + '<span class="lg">Bars = geometric mean · individual accounts excluded · ' + scope.label + '</span>'
+    + 'interquartile range (P25–P75)</span>'
+    + '<span class="lg">Bars = median · individual accounts excluded · ' + scope.label + '</span>'
     + (currentScope === "top"
         ? '<span class="lg">Dashed = fewer than ' + THIN_N + ' datasets, not robust</span>' : '');
 }
@@ -216,7 +217,7 @@ function render(){
   const fs = Math.max(9, Math.min(14, W/62));                  // tick / label size
   const fsName = Math.max(10, Math.min(16, W/48));             // y-axis type names
   const nameW = Math.max(...rows.map(d => measure(TYPE_LABEL[d.type], fsName, 700)));
-  const valW  = Math.max(...bars.map(b => measure(fmtBytes(Math.pow(10, b.mean)), fs, 700)));
+  const valW  = Math.max(...bars.map(b => measure(fmtBytes(Math.pow(10, b.mid)), fs, 700)));
   const labelH = fs*1.15;                                      // row above/below each bar for its value
   const M = { top: Math.round(labelH), right: Math.round(fs*2.2), bottom: Math.round(fs*3.4),
               left: Math.round(nameW + fs*1.2) };
@@ -273,7 +274,7 @@ function render(){
     .attr("stroke", b => thin(b) ? b.fill : "none")
     .attr("stroke-width", b => thin(b) ? 1.2 : 0)
     .attr("stroke-dasharray", b => thin(b) ? "4,3" : null)
-    .attr("width", animate ? 0 : b => Math.max(1, x(b.mean)));
+    .attr("width", animate ? 0 : b => Math.max(1, x(b.mid)));
 
   if (SHOW_TOOLTIP){
     barSel.on("mousemove", (evt, b) => {
@@ -282,9 +283,9 @@ function render(){
           .style("left", Math.min(evt.clientX + 12, window.innerWidth - 230) + "px")
           .style("top", (evt.clientY + 14) + "px")
           .html('<span class="tt-title">' + TYPE_LABEL[d.type] + ' — ' + b.series.label + '</span>'
-            + 'Geometric mean: <b>' + fmtBytes(Math.pow(10, b.mean)) + '</b><br>'
-            + '<span>' + (b.sd > 0
-                ? '±1 SD: ' + fmtBytes(Math.pow(10, b.mean - b.sd)) + ' – ' + fmtBytes(Math.pow(10, b.mean + b.sd))
+            + 'Median: <b>' + fmtBytes(Math.pow(10, b.mid)) + '</b><br>'
+            + '<span>' + (b.hi > b.lo
+                ? 'P25–P75: ' + fmtBytes(Math.pow(10, b.lo)) + ' – ' + fmtBytes(Math.pow(10, b.hi))
                 : 'single dataset — no spread') + '</span><br>'
             + '<span>' + fmtInt(d.n) + ' of ' + fmtInt(d.pop) + ' datasets'
             + (currentScope === "top" ? ' — ' + (d.n/10).toFixed(1) + '% of the top 1,000' : '')
@@ -294,12 +295,12 @@ function render(){
       .on("mouseleave", () => tooltip.style("display", "none"));
   }
 
-  // +-1 SD whisker with end caps, one per bar
+  // interquartile whisker (P25-P75) with end caps, one per bar
   const wh = g.append("g").attr("stroke", "#0f172a").attr("stroke-width", 1.4)
     .attr("opacity", animate ? 0 : 1);
   for (const b of bars){
-    if (!(b.sd > 0)) continue;
-    const y0 = barC(b), x0 = x(b.mean - b.sd), x1 = x(b.mean + b.sd);
+    if (!(b.hi > b.lo)) continue;
+    const y0 = barC(b), x0 = x(b.lo), x1 = x(b.hi);
     wh.append("line").attr("x1", x0).attr("x2", x1).attr("y1", y0).attr("y2", y0);
     const cap = Math.max(3, bh*0.34);
     for (const xc of [x0, x1])
@@ -307,17 +308,17 @@ function render(){
         .attr("y1", y0 - cap).attr("y2", y0 + cap);
   }
 
-  // geometric mean, at each bar's tip: above the unweighted bar, below the weighted one
+  // median, at each bar's tip: above the unweighted bar, below the weighted one
   const vals = g.append("g").selectAll("text").data(bars).join("text")
-    .attr("x", b => Math.min(iw + M.right - valW - 2, x(b.mean) + fs*0.35))
+    .attr("x", b => Math.min(iw + M.right - valW - 2, x(b.mid) + fs*0.35))
     .attr("y", b => b.series.key === "u" ? barY(b) - fs*0.32 : barY(b) + bh + fs*0.92)
     .attr("font-size", fs*0.95).attr("font-weight", 700).attr("fill", "#0f172a")
     .attr("opacity", animate ? 0 : 1)
-    .text(b => fmtBytes(Math.pow(10, b.mean)));
+    .text(b => fmtBytes(Math.pow(10, b.mid)));
 
   if (animate){
     barSel.transition().duration(850).ease(d3.easeCubicOut)
-      .attr("width", b => Math.max(1, x(b.mean)));
+      .attr("width", b => Math.max(1, x(b.mid)));
     wh.transition().delay(500).duration(350).attr("opacity", 1);
     vals.transition().delay(600).duration(300).attr("opacity", 1);
   }

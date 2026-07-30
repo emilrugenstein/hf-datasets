@@ -1,0 +1,321 @@
+<!doctype html><html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who owns the Hub's most-downloaded datasets</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root { --breakpoint-compact: 500px; }            /* MUST equal BREAKPOINT_COMPACT in JS */
+  html,body { margin:0; height:100vh; width:100vw; overflow:hidden; color:#0f172a;
+    font-family: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Helvetica,Arial,sans-serif; }
+  .viz-grid { display:grid; height:100vh; box-sizing:border-box; padding-bottom:clamp(8px,2vh,18px);
+    grid-template-rows:17fr 1fr 1fr 1fr; grid-template-columns:1fr 1fr; }   /* rebuilt by applyContainerVisibility() */
+  #container1 { grid-column:1 / -1; min-height:0; } #viz { width:100%; height:100%; }
+  /* footnote row: sits under the chart, above the legend */
+  #container5 { grid-column:1 / -1; display:flex; align-items:center; justify-content:center;
+    padding:0 20px; min-width:0; overflow:hidden; }
+  #container5 #footnote { font-size:clamp(5px,1.35vw,12px); color:#475569; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  #container2 { grid-column:1 / -1; }               /* legend */
+  #legend { height:100%; display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
+    gap:2px 16px; font-size:clamp(9px,1.4vw,13px); font-weight:600; color:#475569; }
+  #legend .chip { display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+  /* source (left): width-scaled, vertically centred, ellipsised so a long source never wraps the row */
+  #container3 { font-size:clamp(5px,1.6vw,16px); display:flex; align-items:center; justify-content:flex-start;
+    padding:0 20px; overflow:hidden; min-width:0; }
+  #container3 #source-text { font-weight:600; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  #container3 #source-text a { color:#2756d3; text-decoration:underline; }
+  /* logo (right): fills the footer row height */
+  #container4 { display:flex; justify-content:flex-end; align-items:center; padding:0 20px; overflow:hidden; min-width:0; }
+  #container4 a { height:100%; display:flex; align-items:center; }
+  #container4 img { height:100%; width:auto; max-height:100%; max-width:100%; object-fit:contain; }
+  #tooltip { position:fixed; pointer-events:none; display:none; background:#fff;
+    border:1px solid #DBDBDB; padding:6px 8px; font-size:12px; border-radius:4px; }
+  #tooltip .tt-head { font-weight:700; margin-bottom:3px; }
+  #tooltip .tt-row { display:flex; align-items:center; gap:6px; padding:1px 0; }
+  #tooltip .tt-row .nm { color:#475569; }
+  #tooltip .tt-row .vl { margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; padding-left:12px; }
+  svg text { font-family:inherit; }
+  svg .grid .domain { display:none; }
+  svg .grid .tick line { stroke:#DBDBDB; stroke-dasharray:2,3; }
+  svg .grid text { fill:#475569; font-weight:600; font-size:11px; }
+  /* Short iframe / "snapshot" embed: drop ALL chrome (footnote, legend, source, logo); chart alone fills the frame. */
+  @media (max-height:500px){
+    .viz-grid { grid-template-rows:1fr !important; grid-template-columns:1fr !important; padding-bottom:0; }
+    #container1 { grid-row:1 !important; grid-column:1 / -1 !important; }
+    #container2,#container3,#container4,#container5 { display:none !important; }
+  }
+</style></head><body>
+<div class="viz-grid">
+  <div id="container1"><div id="viz"></div></div>
+  <div id="container5"><span id="footnote"></span></div>  <!-- methodology footnote -->
+  <div id="container2"><div id="legend"></div></div>
+  <div id="container3"><span id="source-text"></span></div>
+  <div id="container4"><a href="https://aiworld.eu/" target="_blank" rel="noopener"><img src="https://aiworld.eu/logo-transparent.svg" alt="AI World"></a></div>
+</div>
+<div id="tooltip"></div>
+<script>
+"use strict";
+// ---- CONFIG: declare everything; nothing implicit ----
+const SHOW_CONTAINER_2 = 1, SHOW_CONTAINER_3 = 1, SHOW_CONTAINER_4 = 1, SHOW_CONTAINER_5 = 1;
+const SHOW_TOOLTIP = 1;
+const BREAKPOINT_COMPACT = 500;                       // px; MUST equal --breakpoint-compact
+/* House region accents: Europe brand blue, USA amber, China red, RoW slate; Unknown neutral gray. */
+const REGION_COLORS = { Europe:"#2756d3", "United States":"#f59e0b", China:"#E53229",
+                        "Rest of World":"#475569", Unknown:"#B3B3B3" };
+const REGION_ORDER = ["United States", "Europe", "China", "Rest of World", "Unknown"];
+const COUNTRY_REGION = { "United States":"United States", China:"China", Unknown:"Unknown",
+                         Spain:"Europe", France:"Europe", "United Kingdom":"Europe",
+                         Netherlands:"Europe", Germany:"Europe",
+                         Japan:"Rest of World", Singapore:"Rest of World", Canada:"Rest of World" };
+const INK = "#0f172a", MUTED = "#475569";
+const SOURCE_NAME = "Hugging Face hub weekly snapshots (hfmlsoc)";
+const SOURCE_HREF = "https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots";
+const FOOTNOTE = "Top 10 owner countries, top 1,000 datasets by all-time downloads; 27 smaller countries (92M) "
+  + "not shown. Unknown = no public evidence, never inferred from names/language. Snapshot 2026-07-22.";
+/* DATA: ranked by downloads; dl = all-time downloads, n = datasets in the top 1,000,
+   q1/med/q3 = dataset-size quartiles in bytes (over the country's datasets with a recorded size). */
+const DATA = [
+  { country:"United States",  dl:1173708460, n:395, q1:4621060,     med:552507317,     q3:501183784089 },
+  { country:"Unknown",        dl:363667935,  n:296, q1:207054681,   med:1532375831,    q3:231439468285 },
+  { country:"China",          dl:106265610,  n:80,  q1:32721544350, med:1000090464780, q3:7349253089286 },
+  { country:"Spain",          dl:100742133,  n:6,   q1:3048715,     med:12945162,      q3:28799835 },
+  { country:"France",         dl:47887007,   n:43,  q1:15674917,    med:22493511838,   q3:206512000775 },
+  { country:"Japan",          dl:36433479,   n:9,   q1:17363699054, med:185103205115,  q3:918700308703 },
+  { country:"United Kingdom", dl:33511566,   n:28,  q1:199248464,   med:3493738050,    q3:415897748848 },
+  { country:"Singapore",      dl:19942397,   n:20,  q1:1103304247,  med:12100689020,   q3:233587151535 },
+  { country:"Netherlands",    dl:17970422,   n:6,   q1:97260,       med:9120712,       q3:188370302 },
+  { country:"Canada",         dl:16798430,   n:15,  q1:142640003,   med:12812846183,   q3:152122634235 },
+  { country:"Germany",        dl:14188908,   n:21,  q1:36117083,    med:5384466841,    q3:159416922663 },
+];
+const TOTAL_DL = 2023397657;                          // all top-1,000 downloads (incl. countries not shown)
+
+document.getElementById("source-text").innerHTML =
+  'Source: <a href="' + SOURCE_HREF + '" target="_blank" rel="noopener">' + SOURCE_NAME + '</a>';
+document.getElementById("footnote").textContent = FOOTNOTE;
+document.getElementById("footnote").title = FOOTNOTE;
+
+// Show only the footer rows whose flag is on, then recompute grid rows.
+// Visual order under the chart: container5 (footnote), legend, then source+logo.
+(function applyContainerVisibility(){
+  const grid = document.querySelector(".viz-grid"), c = n => document.getElementById("container"+n);
+  const c2=c(2), c3=c(3), c4=c(4), c5=c(5);
+  if (c2 && !SHOW_CONTAINER_2) c2.style.display="none";
+  if (c3 && !SHOW_CONTAINER_3) c3.style.display="none";
+  if (c4 && !SHOW_CONTAINER_4) c4.style.display="none";
+  if (c5 && !SHOW_CONTAINER_5) c5.style.display="none";
+  const rowCtrl=SHOW_CONTAINER_5, rowLegend=SHOW_CONTAINER_2, rowFooter=SHOW_CONTAINER_3||SHOW_CONTAINER_4;
+  const rows=[]; let r=1;
+  rows.push((20-(rowCtrl?1:0)-(rowLegend?1:0)-(rowFooter?1:0))+"fr");   // chart absorbs freed rows
+  if (rowCtrl)   { rows.push("1fr"); r++; if (c5) c5.style.gridRow=r; }
+  if (rowLegend) { rows.push("1fr"); r++; if (c2) c2.style.gridRow=r; }
+  if (rowFooter) { rows.push("1fr"); r++;
+    if (SHOW_CONTAINER_3 && c3) c3.style.gridRow=r;
+    if (SHOW_CONTAINER_4 && c4) c4.style.gridRow=r;
+    if (SHOW_CONTAINER_3 && !SHOW_CONTAINER_4 && c3) c3.style.gridColumn="1 / span 2";  // lone item spans both cols
+    if (!SHOW_CONTAINER_3 && SHOW_CONTAINER_4 && c4) c4.style.gridColumn="1 / span 2";
+  }
+  grid.style.gridTemplateRows = rows.join(" ");
+  c(1).style.gridRow = "1";
+})();
+
+/* ---- state ---- */
+let firstRender = true;
+const tooltip = document.getElementById("tooltip");
+const vizContainer = document.getElementById("viz");
+
+/* ---- helpers ---- */
+function fmtM(v){ return d3.format(",.0f")(v / 1e6) + "M"; }
+function fmtPct(x){ const p = x * 100; return (p >= 9.5 ? Math.round(p) : +p.toFixed(1)) + "%"; }
+function fmtBytes(v){
+  for (const [div, suf] of [[1e12," TB"],[1e9," GB"],[1e6," MB"],[1e3," kB"]])
+    if (v >= div) { const x = v/div; return (x >= 9.95 ? Math.round(x) : +x.toFixed(1)) + suf; }
+  return Math.round(v) + " B";
+}
+function niceMax(v){
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1,1.2,1.5,2,2.5,3,4,5,6,8,10]) if (m*p >= v) return m*p;
+  return 10*p;
+}
+
+/* ---- tooltip ---- */
+function showTooltip(x, y, d){
+  const mk = (nm, vl) => {
+    const row = document.createElement("div"); row.className = "tt-row";
+    const n = document.createElement("span"); n.className = "nm"; n.textContent = nm;
+    const v = document.createElement("span"); v.className = "vl"; v.textContent = vl;
+    row.append(n, v); return row;
+  };
+  const head = document.createElement("div"); head.className = "tt-head"; head.textContent = d.country;
+  tooltip.replaceChildren(head,
+    mk("all-time downloads", fmtM(d.dl)),
+    mk("share of top-1,000 volume", fmtPct(d.dl / TOTAL_DL)),
+    mk("datasets in top 1,000", d3.format(",")(d.n)),
+    mk("median dataset size", fmtBytes(d.med)),
+    mk("size IQR", fmtBytes(d.q1) + " – " + fmtBytes(d.q3)));
+  tooltip.style.display = "block";
+  tooltip.style.left = Math.min(x + 14, innerWidth - tooltip.offsetWidth - 8) + "px";
+  tooltip.style.top = Math.min(y + 14, innerHeight - tooltip.offsetHeight - 8) + "px";
+}
+function hideTooltip(){ tooltip.style.display = "none"; }
+
+function buildLegend(){
+  const lg = document.getElementById("legend");
+  lg.innerHTML = "";
+  for (const r of REGION_ORDER){
+    const s = document.createElement("span");
+    const chip = document.createElement("span"); chip.className = "chip"; chip.style.background = REGION_COLORS[r];
+    s.append(chip, r);
+    lg.appendChild(s);
+  }
+}
+
+/* ---- render: clears the SVG and rebuilds from a measured container ---- */
+function render(){
+  try { draw(); }
+  catch (err) {                                  // graceful failure: never fail silently
+    const b = document.createElement("div");
+    b.style.cssText = "position:fixed;bottom:12px;left:12px;z-index:999;background:#fef2f2;border:1px solid #E53229;"
+      + "color:#991b1b;padding:8px 12px;border-radius:6px;font-size:12px;max-width:420px;";
+    b.textContent = "Render error: " + err.message;
+    document.body.append(b);
+  }
+  firstRender = false;                           // no animation on resize redraws
+}
+
+function draw(){
+  d3.select("#viz").selectAll("*").remove();
+  hideTooltip();
+  const rect = vizContainer.getBoundingClientRect();
+  const cw = Math.max(300, rect.width), H = Math.max(180, rect.height);
+  const compact = window.matchMedia(`(max-height:${BREAKPOINT_COMPACT}px)`).matches;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const rows = DATA;                             // already ranked by downloads
+  const catFS = compact ? 10 : Math.max(10, Math.min(13, cw / 60));
+  // left margin from the longest country label; label zones hold the value labels of each panel
+  const ML = 14 + 0.62 * catFS * d3.max(rows, d => d.country.length);
+  const LBL_L = 96, LBL_R = 28;                  // downloads label zone; small right headroom (size labels sit above the bars)
+  const MT = 8, MB = compact ? 22 : 44;          // extra line for the axis titles below the ticks
+  const iw = cw - ML - LBL_L - LBL_R, ih = H - MT - MB;
+  const iwL = Math.round(iw * 0.55), iwR = iw - iwL;
+  const xR0 = ML + iwL + LBL_L;                  // right (size) panel starts after the downloads label zone
+
+  const xMax = niceMax(d3.max(rows, d => d.dl));
+  const ticksL = (compact || iwL < 420 ? [0, .5, 1] : [0, .25, .5, .75, 1]).map(f => f * xMax);
+  const X = d3.scaleLinear().domain([0, xMax]).range([ML, ML + iwL]);
+  const Y = d3.scaleBand().domain(rows.map(d => d.country)).range([MT, MT + ih]).padding(0.3);   // gap fits the size label above each bar
+  /* size panel: log scale; bar = median, whisker = IQR */
+  const SZ_MIN = 3e4, SZ_MAX = 2e13;             // spans Netherlands q1 (97 kB) to China q3 (7.3 TB)
+  const ticksR = [1e6, 1e9, 1e12];
+  const XR = d3.scaleLog().domain([SZ_MIN, SZ_MAX]).range([xR0, xR0 + iwR]);
+
+  const svg = d3.select("#viz").append("svg")
+    .attr("viewBox", `0 0 ${cw} ${H}`).attr("width", cw).attr("height", H);
+
+  // vertical gridlines via axisBottom(x).tickSize(-innerHeight); styling from the .grid CSS
+  svg.append("g").attr("class", "grid").attr("transform", `translate(0,${MT + ih})`)
+    .call(d3.axisBottom(X).tickValues(ticksL).tickSize(-ih).tickPadding(8).tickFormat(v => fmtM(v)));
+  svg.append("g").attr("class", "grid").attr("transform", `translate(0,${MT + ih})`)
+    .call(d3.axisBottom(XR).tickValues(ticksR).tickSize(-ih).tickPadding(8).tickFormat(v => fmtBytes(v)));
+
+  // category labels
+  svg.append("g").selectAll("text").data(rows).join("text")
+    .attr("x", ML - 8).attr("y", d => Y(d.country) + Y.bandwidth() / 2)
+    .attr("dy", "0.35em").attr("text-anchor", "end")
+    .attr("font-size", catFS).attr("font-weight", 600)
+    .attr("fill", d => d.country === "Unknown" ? MUTED : INK)
+    .text(d => d.country);
+
+  // bars, colored by house region accent; Unknown stays in its ranked slot but reads as gray
+  const barColor = d => REGION_COLORS[COUNTRY_REGION[d.country]];
+  const bars = svg.append("g").selectAll("rect").data(rows).join("rect")
+    .attr("x", X(0)).attr("y", d => Y(d.country))
+    .attr("height", Y.bandwidth()).attr("rx", 1.5)
+    .attr("fill", barColor);
+
+  // value labels: downloads + n datasets
+  const labels = svg.append("g").selectAll("text").data(rows).join("text")
+    .attr("x", d => X(d.dl) + 7).attr("y", d => Y(d.country) + Y.bandwidth() / 2)
+    .attr("dy", "0.35em").attr("font-size", Math.max(9, catFS - 1))
+    .attr("font-weight", 700).attr("fill", d => d.country === "Unknown" ? MUTED : INK)
+    .attr("font-variant-numeric", "tabular-nums")
+    .text(d => fmtM(d.dl) + (compact ? "" : "  (" + d.n + ")"));
+
+  // size panel: median bar + IQR whisker + median label after the whisker
+  const wY = d => Y(d.country) + Y.bandwidth() / 2;
+  const sizeBars = svg.append("g").selectAll("rect").data(rows).join("rect")
+    .attr("x", XR(SZ_MIN)).attr("y", d => Y(d.country))
+    .attr("height", Y.bandwidth()).attr("rx", 1.5)
+    .attr("fill", barColor).attr("fill-opacity", 0.55);
+  const whiskers = svg.append("g");
+  for (const d of rows) {
+    whiskers.append("line").attr("x1", XR(d.q1)).attr("x2", XR(d.q3))
+      .attr("y1", wY(d)).attr("y2", wY(d)).attr("stroke", INK).attr("stroke-width", 1.2);
+    for (const q of [d.q1, d.q3])
+      whiskers.append("line").attr("x1", XR(q)).attr("x2", XR(q))
+        .attr("y1", wY(d) - 4).attr("y2", wY(d) + 4).attr("stroke", INK).attr("stroke-width", 1.2);
+  }
+  // median label at the bar's tip, just above the bar (house idiom, cf. dataset_size_by_org_type)
+  const szFS = Math.max(9, catFS - 1);
+  const sizeLabels = svg.append("g").selectAll("text").data(rows).join("text")
+    .attr("x", d => Math.min(XR(d.med) + szFS * 0.35, xR0 + iwR + LBL_R - 6.5 * fmtBytes(d.med).length))
+    .attr("y", d => Y(d.country) - 2)            // baseline hugs the bar top so the label reads as the bar's
+    .attr("font-size", szFS)
+    .attr("font-weight", 700).attr("fill", d => d.country === "Unknown" ? MUTED : INK)
+    .attr("font-variant-numeric", "tabular-nums")
+    .text(d => fmtBytes(d.med));
+
+  // axis titles on their own line under the tick labels
+  if (!compact) {
+    svg.append("text")
+      .attr("x", ML + iwL).attr("y", H - 8).attr("text-anchor", "end")
+      .attr("font-size", 11).attr("font-weight", 700).attr("fill", MUTED)
+      .text("all-time downloads (n datasets in parens)");
+    svg.append("text")
+      .attr("x", xR0 + iwR).attr("y", H - 8).attr("text-anchor", "end")
+      .attr("font-size", 11).attr("font-weight", 700).attr("fill", MUTED)
+      .text("dataset size, log scale — bar = median, whisker = IQR");
+  }
+
+  // baselines
+  for (const bx of [X(0), XR(SZ_MIN)])
+    svg.append("line").attr("x1", bx).attr("x2", bx).attr("y1", MT).attr("y2", MT + ih)
+      .attr("stroke", INK).attr("stroke-width", 1);
+
+  if (firstRender && !reducedMotion) {           // grow/fade in on first render only
+    bars.attr("width", 0)
+      .transition().duration(850).ease(d3.easeCubicOut)
+      .attr("width", d => X(d.dl) - X(0));
+    sizeBars.attr("width", 0)
+      .transition().duration(850).ease(d3.easeCubicOut)
+      .attr("width", d => XR(d.med) - XR(SZ_MIN));
+    for (const sel of [labels, sizeLabels, d3.select(whiskers.node()).selectAll("line")])
+      sel.attr("opacity", 0)
+        .transition().delay(220).duration(650).ease(d3.easeCubicOut)
+        .attr("opacity", 1);
+  } else {
+    bars.attr("width", d => X(d.dl) - X(0));
+    sizeBars.attr("width", d => XR(d.med) - XR(SZ_MIN));
+  }
+
+  if (SHOW_TOOLTIP) {
+    svg.append("g").selectAll("rect").data(rows).join("rect")   // full-row hover targets
+      .attr("x", 0).attr("y", d => Y(d.country) - Y.step() * Y.padding() / 2)
+      .attr("width", cw).attr("height", Y.step())
+      .attr("fill", "transparent").style("cursor", "crosshair")
+      .on("mousemove", (evt, d) => showTooltip(evt.clientX, evt.clientY, d))
+      .on("mouseleave", hideTooltip);
+  }
+}
+
+buildLegend();
+render();
+
+let resizeTimer = null;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); });
+if (typeof ResizeObserver !== "undefined") {
+  let first = true;                              // observe() fires once immediately; keep the entry animation
+  new ResizeObserver(() => { if (first) { first = false; return; } clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); })
+    .observe(vizContainer);
+}
+</script></body></html>

@@ -49,8 +49,8 @@ GROUPS = [
         dict(handle="NbAiLab", words=["Nb", "Ai", "Lab"], name="Nasjonalbiblioteket AI Lab",
              cc="NO", country="Norway", datasets=40, models=251, followers=387, dl30=1168733,
              known="NB-Whisper · NB-BERT · NPSC",
-             blurb="National Library of Norway AI Lab — turns the legal-deposit archive into "
-                   "Norwegian speech and language models."),
+             blurb="The National Library of Norway's AI Lab, turning the legal-deposit "
+                   "archive into Norwegian speech and language models."),
         dict(handle="NetherlandsForensicInstitute", words=["Netherlands", "Forensic", "Institute"],
              name="Netherlands Forensic Institute", cc="NL", country="Netherlands",
              datasets=19, models=5, followers=51, dl30=18132,
@@ -60,13 +60,14 @@ GROUPS = [
         dict(handle="AgentPublic", words=["Agent", "Public"], name="AgentPublic",
              cc="FR", country="France", datasets=80, models=19, followers=153, dl30=16991,
              known="LEGI · PIAF · Guillaume Tell 7B",
-             blurb="Etalab / DINUM, the French state digital agency — legal corpora and a "
-                   "sovereign public-service LLM."),
+             blurb="Etalab / DINUM, the French state digital agency. Publishes legal corpora "
+                   "and a sovereign public-service LLM."),
         dict(handle="HHS-Official", words=["HHS-", "Official"],
              name="Department of Health and Human Services", cc="US", country="United States",
              datasets=414, models=0, followers=32, dl30=5632,
              known="Autism prevalence · COVID-19 weekly",
-             blurb="US health department. 414 datasets mirrored from healthdata.gov and CDC releases."),
+             blurb="Federal health department, mirroring healthdata.gov and CDC releases "
+                   "onto the Hub."),
         dict(handle="NationalLibraryOfScotland", words=["National", "Library", "Of", "Scotland"],
              name="National Library of Scotland", cc="UK", country="United Kingdom",
              datasets=11, models=2, followers=19, dl30=4891,
@@ -80,31 +81,30 @@ GROUPS = [
         dict(handle="govtech", words=["govtech"], name="GovTech Singapore - AI Practice",
              cc="SG", country="Singapore", datasets=9, models=7, followers=73, dl30=989,
              known="LionGuard · RabakBench · MinorBench",
-             blurb="GovTech Singapore's AI Practice — safety guardrails and evaluation "
-                   "benchmarks for public-sector deployments."),
+             blurb="Safety guardrails and evaluation benchmarks built for Singapore's "
+                   "public-sector deployments."),
     ]),
     ("university", "Universities", [
         dict(handle="Helsinki-NLP", words=["Helsinki-", "NLP"], name="Helsinki-NLP Research Group",
              cc="FI", country="Finland", datasets=53, models=1563, followers=1065, dl30=7605230,
              known="OPUS-100 · OPUS-MT (1,563 models)",
-             blurb="University of Helsinki — the OPUS parallel corpora plus 1,500+ OPUS-MT "
-                   "translation models, one per language pair."),
+             blurb="Home of the OPUS parallel corpora, and a translation model for almost "
+                   "every language pair."),
         dict(handle="jhu-clsp", words=["jhu-", "clsp"],
              name="Center for Language and Speech Processing @ JHU", cc="US",
              country="United States", datasets=40, models=53, followers=247, dl30=851005,
              known="mmBERT · JFLEG · Kreyòl-MT",
-             blurb="Johns Hopkins Center for Language and Speech Processing — multilingual "
-                   "encoders and low-resource corpora."),
+             blurb="Multilingual encoders and corpora for languages the big models handle "
+                   "badly."),
         dict(handle="uoft-cs", words=["uoft-", "cs"], name="University of Toronto Computer Science",
              cc="CA", country="Canada", datasets=2, models=0, followers=100, dl30=558205,
              known="CIFAR-10 · CIFAR-100",
-             blurb="University of Toronto CS. Two datasets, both from 2009, both still pulled "
-                   "half a million times a month."),
+             blurb="Two datasets, both from 2009, both still among the most-pulled on the "
+                   "Hub."),
         dict(handle="nyu-mll", words=["nyu-", "mll"], name="NYU Machine Learning for Language",
              cc="US", country="United States", datasets=5, models=12, followers=213, dl30=476491,
              known="GLUE · MultiNLI · BLiMP",
-             blurb="NYU Machine Learning for Language — built the benchmark suite that defined "
-                   "the BERT era."),
+             blurb="Built the benchmark suite that defined the BERT era."),
         dict(handle="behavior-1k", words=["behavior-", "1k"], name="BEHAVIOR-1K",
              cc="US", country="United States", datasets=8, models=0, followers=49, dl30=373225,
              known="BEHAVIOR challenge demos",
@@ -116,7 +116,7 @@ GROUPS = [
              blurb="Stanford NLP Group; its sentiment corpora are still default smoke-tests for "
                    "new models."),
         dict(handle="CERN", words=["CERN"], name="CERN - European Organization for Nuclear Research",
-             cc="CH", country="Switzerland (int'l)", datasets=2, models=0, followers=125, dl30=187064,
+             cc="CH", country="Switzerland", datasets=2, models=0, followers=125, dl30=187064,
              known="ColliderML Release 1",
              blurb="The particle-physics lab, now publishing collider ML benchmarks on the Hub."),
     ]),
@@ -128,53 +128,52 @@ GROUPS = [
              blurb="Shanghai AI Lab's IPEC group; re-publishes the major robot datasets in a "
                    "single LeRobot format so they can be trained on together."),
         dict(handle="m-a-p", words=["m-a-p"], name="Multimodal Art Projection",
-             cc="CN", country="China (int'l)", datasets=76, models=212, followers=1102, dl30=1893935,
+             cc="CN", country="China", datasets=76, models=212, followers=1102, dl30=1893935,
              known="COIG-CQIA · YuE · ChatMusician",
-             blurb="Multimodal Art Projection — open research collective spanning Chinese "
-                   "instruction data, code and music generation."),
+             blurb="Open research collective spanning Chinese instruction data, code and "
+                   "music generation."),
         dict(handle="BangumiBase", words=["Bangumi", "Base"], name="BangumiBase",
-             cc="—", country="Unattributed", datasets=810, models=0, followers=161, dl30=1213963,
+             cc="", country="No stated affiliation", datasets=810, models=0, followers=161, dl30=1213963,
              known="One Piece · Steins;Gate · 808 more",
-             blurb="A character image database with one dataset per anime series — 810 of them. "
-                   "The Hub as a fandom archive."),
+             blurb="One dataset per anime series, a character image archive. Fandom "
+                   "infrastructure on the Hub."),
         dict(handle="agibot-world", words=["agibot-", "world"], name="AgiBot World",
              cc="CN", country="China", datasets=11, models=6, followers=568, dl30=404948,
              known="AgiBotWorld Alpha/Beta · GO-1",
-             blurb="AgiBot's open real-robot programme — thousands of hours of manipulation on "
-                   "one hardware platform."),
+             blurb="AgiBot's open real-robot programme: thousands of hours of manipulation "
+                   "on one hardware platform."),
         dict(handle="DL3DV", words=["DL3DV"], name="DL3DV", cc="INT", country="International",
              datasets=11, models=0, followers=78, dl30=350735,
              known="DL3DV-10K · DL3DV-Benchmark",
              blurb="Real-world 3D scene capture at scale; the standard benchmark for novel-view "
                    "synthesis."),
         dict(handle="MedOtter", words=["Med", "Otter"], name="MedOtter",
-             cc="—", country="Unattributed", datasets=128, models=106, followers=10, dl30=281449,
+             cc="", country="No stated affiliation", datasets=128, models=106, followers=10, dl30=281449,
              known="BraTS 2023 · 4D-Lung · CT Lymph Nodes",
-             blurb="Mirrors clinical imaging archives onto the Hub — 128 datasets of CT, MRI and "
-                   "pathology."),
+             blurb="Mirrors clinical imaging archives onto the Hub: CT, MRI and pathology."),
         dict(handle="FLARE-MedFM", words=["FLARE-", "MedFM"],
              name="Fast, Low-resource, Accurate, Robust and Effectual Medical Image Analysis",
              cc="INT", country="International", datasets=11, models=1, followers=67, dl30=47200,
              known="PancancerCTSeg · FLARE-MLLM-2D",
-             blurb="The MICCAI FLARE challenge community — foundation models for medical image "
-                   "segmentation, run as a public competition."),
+             blurb="MICCAI challenge community building medical image segmentation models "
+                   "as a public competition."),
     ]),
     ("non-profit", "Non-profits", [
         dict(handle="allenai", words=["allenai"], name="Ai2", cc="US", country="United States",
              datasets=1275, models=968, followers=6348, dl30=11401946,
              known="Dolma · OLMo · Molmo · C4",
-             blurb="Seattle research institute behind the fully-open OLMo stack — weights, data "
-                   "and training code all released."),
+             blurb="Fully-open OLMo stack: weights, data and training code all released "
+                   "together."),
         dict(handle="EleutherAI", words=["Eleuther", "AI"], name="EleutherAI",
              cc="US", country="United States", datasets=255, models=972, followers=1356,
              dl30=7458347, known="The Pile · GPT-J-6B · GPT-NeoX-20B",
              blurb="Grassroots collective turned nonprofit lab; built the open pretraining "
-                   "corpus everyone else fine-tuned on."),
+                   "corpus much of the field trained on."),
         dict(handle="mteb", words=["mteb"], name="Massive Text Embedding Benchmark",
              cc="INT", country="International", datasets=1654, models=4, followers=1116,
              dl30=1364534, known="MTEB task suite (1,654 sets)",
-             blurb="Custodian of the Massive Text Embedding Benchmark — the scoreboard every "
-                   "embedding model reports against."),
+             blurb="Keeper of the embedding leaderboard that new text-embedding models "
+                   "report against."),
         dict(handle="bigcode", words=["bigcode"], name="BigCode", cc="INT",
              country="International", datasets=93, models=69, followers=2121, dl30=1057237,
              known="The Stack v1/v2 · StarCoder · StarCoder2",
@@ -188,12 +187,12 @@ GROUPS = [
         dict(handle="cais", words=["cais"], name="Center for AI Safety",
              cc="US", country="United States", datasets=13, models=8, followers=562, dl30=614571,
              known="Humanity's Last Exam · MMLU · WMDP",
-             blurb="Center for AI Safety — writes the exams frontier models are graded on."),
+             blurb="Publishes the benchmark exams frontier models are scored on."),
         dict(handle="InternRobotics", words=["Intern", "Robotics"], name="Intern Robotics",
              cc="CN", country="China", datasets=29, models=39, followers=388, dl30=286915,
              known="InternData-A1 · InternVLA · OmniWorld",
-             blurb="Shanghai AI Laboratory's embodied-AI arm — data and vision-language-action "
-                   "policies for robots."),
+             blurb="Shanghai AI Laboratory's embodied-AI arm: robot data and "
+                   "vision-language-action policies."),
     ]),
 ]
 
@@ -271,14 +270,14 @@ TEMPLATE = r"""<!doctype html><html><head>
   #container4 img { height:100%; width:auto; max-height:100%; max-width:100%; object-fit:contain; }
   #tooltip { position:fixed; pointer-events:none; display:none; background:#fff;
     border:1px solid #DBDBDB; padding:8px 10px; font-size:12px; border-radius:4px;
-    max-width:320px; box-shadow:0 6px 20px rgba(15,23,42,0.10); border-top-width:3px; border-top-style:solid; }
+    max-width:350px; box-shadow:0 6px 20px rgba(15,23,42,0.10); border-top-width:3px; border-top-style:solid; }
   #tooltip .tt-cc { font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; }
   #tooltip .tt-title { font-weight:700; font-size:13px; line-height:1.25; margin-top:2px; }
   #tooltip .tt-handle { color:#475569; font-size:11px; }
   #tooltip .tt-blurb { color:#334155; line-height:1.45; margin-top:6px; }
   #tooltip .tt-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:6px;
     margin-top:7px; padding-top:6px; border-top:1px solid #DBDBDB; }
-  #tooltip .tt-stats dt { font-size:9px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#475569; }
+  #tooltip .tt-stats dt { font-size:9px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:#475569; }
   #tooltip .tt-stats dd { margin:1px 0 0; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; }
   #tooltip .tt-known { margin-top:6px; padding-top:5px; border-top:1px solid #DBDBDB;
     font-size:10px; color:#475569; line-height:1.5; }
@@ -323,7 +322,7 @@ const EXT_BOTTOM = Math.sin(64.2857 * Math.PI / 180) * R_RING + 0.5 * 1.07;
 const COL_CHOICES = [1, 2, 4];                        // cluster grid arrangements to try
 
 const SNAPSHOT = "__SNAPSHOT__";
-const SOURCE_NAME = "Hugging Face Hub API, " + SNAPSHOT + " — CEPS analysis";
+const SOURCE_NAME = "CEPS analysis of the Hugging Face Hub API, " + SNAPSHOT;
 const SOURCE_HREF = "https://huggingface.co/docs/hub/api";
 
 /* DATA: one object per organisation type, `members` ordered by dl30 desc (the seven
@@ -360,7 +359,7 @@ document.getElementById("source-text").innerHTML =
 
 /* ---- helpers ---- */
 function fmtCompact(v){
-  if (v == null) return "–";
+  if (v == null) return "n/a";
   for (const [div, suf] of [[1e9,"B"],[1e6,"M"],[1e3,"K"]])
     if (v >= div) { const x = v/div; return (x >= 100 ? Math.round(x) : +x.toFixed(1)) + suf; }
   return String(Math.round(v));
@@ -433,17 +432,17 @@ function showTooltip(evt, m, color){
   if (!SHOW_TOOLTIP) return;
   tooltipEl.style.borderTopColor = color;
   tooltipEl.innerHTML =
-    '<div class="tt-cc" style="color:' + color + '">' + m.cc + " · " + m.country + '</div>' +
+    '<div class="tt-cc" style="color:' + color + '">' + [m.cc, m.country].filter(Boolean).join(" · ") + '</div>' +
     '<div class="tt-title">' + m.name + '</div>' +
     '<div class="tt-handle">@' + m.handle + '</div>' +
     '<div class="tt-blurb">' + m.blurb + '</div>' +
     '<dl class="tt-stats">' +
       '<div><dt>Datasets</dt><dd>' + m.datasets.toLocaleString("en-GB") + '</dd></div>' +
       '<div><dt>Models</dt><dd>' + m.models.toLocaleString("en-GB") + '</dd></div>' +
-      '<div><dt>Dl / 30d</dt><dd>' + fmtCompact(m.dl30) + '</dd></div>' +
+      '<div><dt>DL, 30 days</dt><dd>' + fmtCompact(m.dl30) + '</dd></div>' +
       '<div><dt>Followers</dt><dd>' + fmtCompact(m.followers) + '</dd></div>' +
     '</dl>' +
-    '<div class="tt-known">Known for — ' + m.known + '</div>';
+    '<div class="tt-known">Known for: ' + m.known + '</div>';
   tooltipEl.style.display = "block";
   moveTooltip(evt);
 }
@@ -568,8 +567,8 @@ function render(){
         .attr("class", "node")
         .attr("transform", "translate(" + nx + "," + ny + ")")
         .attr("role", "button").attr("tabindex", 0)
-        .attr("aria-label", m.handle + " — " + m.name);
-      node.append("title").text(m.handle + " — " + m.name);
+        .attr("aria-label", m.handle + ": " + m.name);
+      node.append("title").text(m.handle + ": " + m.name);
       node.append("circle").attr("r", L / 2).attr("fill", "#fff");
       node.append("image")
         .attr("href", m.avatar)

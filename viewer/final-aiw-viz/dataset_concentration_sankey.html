@@ -1,0 +1,309 @@
+<!doctype html><html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Organisations hold few datasets but most of the attention</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  :root { --breakpoint-compact: 500px; }            /* MUST equal BREAKPOINT_COMPACT in JS */
+  html,body { margin:0; height:100vh; width:100vw; overflow:hidden; color:#0f172a;
+    font-family: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Helvetica,Arial,sans-serif; }
+  .viz-grid { display:grid; height:100vh; box-sizing:border-box; padding-bottom:clamp(8px,2vh,18px);
+    grid-template-rows:16fr 1fr 1fr; grid-template-columns:1fr 1fr; }
+  #container1 { grid-column:1 / -1; } #viz { width:100%; height:100%; }
+  #container2 { grid-column:1 / -1; }
+  #legend { display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
+    gap:clamp(6px,1.4vw,18px); padding:0 20px; height:100%; }
+  #legend .item { display:flex; align-items:center; gap:6px; font-size:clamp(8px,1.25vw,13px);
+    font-weight:600; color:#334155; white-space:nowrap; }
+  #legend .swatch { width:clamp(8px,1.1vw,12px); height:clamp(8px,1.1vw,12px); border-radius:2px; flex:0 0 auto; }
+  #container3 { font-size:clamp(5px,1.6vw,16px); display:flex; align-items:center; justify-content:flex-start;
+    padding:0 20px; overflow:hidden; min-width:0; }
+  #container3 #source-text { font-weight:600; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  #container3 #source-text a { color:#2756d3; text-decoration:underline; }
+  #container4 { display:flex; justify-content:flex-end; align-items:center; padding:0 20px; overflow:hidden; min-width:0; }
+  #container4 a { height:100%; display:flex; align-items:center; }
+  #container4 img { height:100%; width:auto; max-height:100%; max-width:100%; object-fit:contain; }
+  #tooltip { position:fixed; pointer-events:none; display:none; background:#fff;
+    border:1px solid #DBDBDB; padding:6px 8px; font-size:12px; border-radius:4px;
+    box-shadow:0 2px 6px rgba(15,23,42,0.12); }
+  #tooltip .t-title { font-weight:700; margin-bottom:3px; }
+  #tooltip .t-row { display:flex; justify-content:space-between; gap:14px; color:#334155; }
+  #tooltip .t-row b { font-weight:700; color:#0f172a; }
+  /* Short iframe / "snapshot" embed: drop ALL chrome; chart alone fills the frame. */
+  @media (max-height:500px){
+    .viz-grid { grid-template-rows:1fr !important; grid-template-columns:1fr !important; padding-bottom:0; }
+    #container1 { grid-row:1 !important; grid-column:1 / -1 !important; }
+    #container2,#container3,#container4,#container5 { display:none !important; }
+  }
+</style></head><body>
+<div class="viz-grid">
+  <div id="container1"><div id="viz"></div></div>
+  <div id="container2"><div id="legend"></div></div>
+  <div id="container3"><span id="source-text"></span></div>
+  <div id="container4"><a href="https://aiworld.eu/" target="_blank" rel="noopener"><img src="https://aiworld.eu/logo-transparent.svg" alt="AI World"></a></div>
+</div>
+<div id="tooltip"></div>
+<script>
+// ---- CONFIG: declare everything; nothing implicit ----
+const SHOW_CONTAINER_2 = 1, SHOW_CONTAINER_3 = 1, SHOW_CONTAINER_4 = 1, SHOW_CONTAINER_5 = 0;
+const SHOW_TOOLTIP = 1;
+const BREAKPOINT_COMPACT = 500;                       // px; MUST equal --breakpoint-compact
+const SOURCE_NAME = "Hugging Face hub weekly snapshots (hfmlsoc), 22 July 2026";
+const SOURCE_HREF = "https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots";
+
+/* Org-type palette: exact hex of the hub notebook's ORG_TYPE_COLORS (seaborn colorblind). */
+const COLORS = {
+  company: '#DE8F05', community: '#029E73', 'non-profit': '#D55E00', university: '#CC78BC',
+  classroom: '#CA9161', government: '#0173B2', individual: '#B3B3B3',
+};
+/* Fixed vertical order in every column — organisations on top (by downloads), individuals last.
+   Deliberately NOT re-sorted per column: parallel ribbons make the widening visible. */
+const TYPE_ORDER = ['company', 'community', 'non-profit', 'university', 'classroom', 'government', 'individual'];
+const GAP = 3;                                        // uniform white gap between every band
+
+const COLUMNS = [
+  { key: 'n',    label: 'Datasets' },
+  { key: 'dlat', label: 'All-time downloads' },
+];
+
+/* One object per org type; hub-wide totals in the 2026-07-22 snapshot. */
+const DATA = [
+  { type: 'company',    n:  30809, dlat:  514625637 },
+  { type: 'community',  n:  61887, dlat:  511127111 },
+  { type: 'non-profit', n:  65622, dlat:  400482596 },
+  { type: 'university', n:  24041, dlat:  264379015 },
+  { type: 'classroom',  n:   4550, dlat:    4877893 },
+  { type: 'government', n:    725, dlat:     736514 },
+  { type: 'individual', n: 786827, dlat: 1584438199 },
+];
+
+document.getElementById("source-text").innerHTML =
+  'Source: <a href="' + SOURCE_HREF + '" target="_blank" rel="noopener">' + SOURCE_NAME + '</a>';
+
+(function applyContainerVisibility(){
+  const grid = document.querySelector(".viz-grid"), c = n => document.getElementById("container"+n);
+  const c2=c(2), c3=c(3), c4=c(4), c5=c(5);
+  if (c2 && !SHOW_CONTAINER_2) c2.style.display="none";
+  if (c3 && !SHOW_CONTAINER_3) c3.style.display="none";
+  if (c4 && !SHOW_CONTAINER_4) c4.style.display="none";
+  if (c5 && !SHOW_CONTAINER_5) c5.style.display="none";
+  const rowCtrl=SHOW_CONTAINER_5, rowLegend=SHOW_CONTAINER_2, rowFooter=SHOW_CONTAINER_3||SHOW_CONTAINER_4;
+  const rows=[]; let r=1;
+  rows.push((20-(rowCtrl?1:0)-(rowLegend?1:0)-(rowFooter?1:0))+"fr");
+  if (rowCtrl)   { rows.push("1fr"); r++; if (c5) c5.style.gridRow=r; }
+  if (rowLegend) { rows.push("1fr"); r++; if (c2) c2.style.gridRow=r; }
+  if (rowFooter) { rows.push("1fr"); r++;
+    if (SHOW_CONTAINER_3 && c3) c3.style.gridRow=r;
+    if (SHOW_CONTAINER_4 && c4) c4.style.gridRow=r;
+    if (SHOW_CONTAINER_3 && !SHOW_CONTAINER_4 && c3) c3.style.gridColumn="1 / span 2";
+    if (!SHOW_CONTAINER_3 && SHOW_CONTAINER_4 && c4) c4.style.gridColumn="1 / span 2";
+  }
+  grid.style.gridTemplateRows = rows.join(" ");
+  c(1).style.gridRow = "1";
+})();
+
+// ---- helpers ----
+const byType = new Map(DATA.map(d => [d.type, d]));
+const ROWS = TYPE_ORDER.map(t => byType.get(t));
+const TOTALS = Object.fromEntries(COLUMNS.map(c => [c.key, d3.sum(ROWS, d => d[c.key])]));
+const IS_ORG = t => t !== 'individual';
+
+function fmtBig(v){
+  if (v >= 1e9) return (v/1e9).toFixed(2) + "bn";
+  if (v >= 1e6) return (v/1e6).toFixed(v >= 1e8 ? 0 : 1) + "m";
+  if (v >= 1e3) return (v/1e3).toFixed(0) + "k";
+  return d3.format(",")(v);
+}
+function fmtPct(s){
+  if (s > 0 && s < 0.001) return "<0.1%";
+  return (s*100).toFixed(s < 0.1 ? 1 : 0) + "%";
+}
+const capitalise = s => s[0].toUpperCase() + s.slice(1);
+
+// ---- legend (types, in the order they are stacked) ----
+(function buildLegend(){
+  const box = document.getElementById("legend");
+  box.innerHTML = "";
+  TYPE_ORDER.forEach(t => {
+    const item = document.createElement("div");
+    item.className = "item";
+    const sw = document.createElement("span");
+    sw.className = "swatch"; sw.style.background = COLORS[t];
+    const label = document.createElement("span");
+    label.textContent = capitalise(t) + (IS_ORG(t) ? "" : " accounts");
+    item.append(sw, label);
+    box.append(item);
+  });
+})();
+
+const tooltip = d3.select("#tooltip");
+const vizContainer = document.getElementById("viz");
+let firstRender = true;
+
+function showTooltip(evt, row){
+  if (!SHOW_TOOLTIP) return;
+  const rows = COLUMNS.map(c =>
+    `<div class="t-row"><span>${c.label}</span><b>${fmtPct(row[c.key]/TOTALS[c.key])} · ${fmtBig(row[c.key])}</b></div>`).join("");
+  tooltip.style("display","block")
+    .html(`<div class="t-title" style="color:${COLORS[row.type]}">${capitalise(row.type)}</div>${rows}`);
+  const w = tooltip.node().offsetWidth, h = tooltip.node().offsetHeight;
+  tooltip.style("left", Math.min(evt.clientX + 14, window.innerWidth  - w - 8) + "px")
+         .style("top",  Math.min(evt.clientY + 14, window.innerHeight - h - 8) + "px");
+}
+const hideTooltip = () => tooltip.style("display","none");
+
+function render(){
+  d3.select("#viz").selectAll("*").remove();
+  const rect = vizContainer.getBoundingClientRect();
+  const W = Math.max(320, rect.width), H = Math.max(220, rect.height);
+  const compact = window.matchMedia(`(max-height:${BREAKPOINT_COMPACT}px)`).matches;
+  const showTypeLabels = W >= 620;
+
+  const NW = compact ? 12 : 16;                                   // node width
+  const fs = k => Math.max(9, Math.min(k, W/62));                 // width-scaled type size
+  const TOP = compact ? 56 : 62, BOT = compact ? 26 : 34;   // room for header + org-share call-out
+  const LEFT = showTypeLabels ? Math.min(96, W*0.10) : 26;
+  const RIGHT = showTypeLabels ? Math.min(210, W*0.24) : 26;
+
+  const span = (W - RIGHT - NW - LEFT) / Math.max(1, COLUMNS.length - 1);
+  const x = COLUMNS.map((_, i) => LEFT + i * span);
+  const LASTC = COLUMNS.length - 1;
+
+  const innerH = H - TOP - BOT;
+  const gapTotal = GAP * (TYPE_ORDER.length - 1);
+  const usableH = Math.max(40, innerH - gapTotal);
+
+  // layout: same order in every column, y from cumulative shares
+  const layout = COLUMNS.map(col => {
+    let y = TOP;
+    return ROWS.map(row => {
+      const h = (row[col.key] / TOTALS[col.key]) * usableH;
+      const seg = { row, y, h };
+      y += h + GAP;
+      return seg;
+    });
+  });
+  const orgShare = col => d3.sum(ROWS.filter(r => IS_ORG(r.type)), r => r[col.key]) / TOTALS[col.key];
+
+  const svg = d3.select("#viz").append("svg")
+    .attr("viewBox", `0 0 ${W} ${H}`).attr("width", W).attr("height", H);
+
+  // ---- column headers + the two share call-outs that carry the point ----
+  COLUMNS.forEach((col, ci) => {
+    const cx = x[ci] + NW/2;
+    const anchor = ci === 0 ? "start" : "middle";
+    const tx = ci === 0 ? x[ci] : cx;
+    const g = svg.append("g").attr("text-anchor", anchor);
+    g.append("text").attr("x", tx).attr("y", compact ? 14 : 18)
+      .attr("font-size", fs(14)).attr("font-weight", 700).attr("fill", "#0f172a")
+      .text(col.label);
+    g.append("text").attr("x", tx).attr("y", compact ? 31 : 36)
+      .attr("font-size", fs(11.5)).attr("font-weight", 600).attr("fill", "#64748b")
+      .text("share of " + fmtBig(TOTALS[col.key]));
+    g.append("text").attr("x", tx).attr("y", TOP - 9)
+      .attr("font-size", fs(13)).attr("font-weight", 700).attr("fill", "#0f172a")
+      .text(fmtPct(orgShare(col)) + " organisations");
+    g.append("text").attr("x", tx).attr("y", H - BOT + fs(14))
+      .attr("font-size", fs(13)).attr("font-weight", 700).attr("fill", "#8a8a8a")
+      .text(fmtPct(1 - orgShare(col)) + " individuals");
+  });
+
+  // ---- ribbons between consecutive columns, one band per type ----
+  const band = (a, b, xa, xb) => {
+    const xm = (xa + xb) / 2;
+    return `M${xa} ${a.y}C${xm} ${a.y},${xm} ${b.y},${xb} ${b.y}`
+         + `L${xb} ${b.y + b.h}C${xm} ${b.y + b.h},${xm} ${a.y + a.h},${xa} ${a.y + a.h}Z`;
+  };
+  const OPACITY = 0.45;
+  const ribbons = svg.append("g");
+  for (let ci = 0; ci < COLUMNS.length - 1; ci++) {
+    layout[ci].forEach((a, ri) => {
+      ribbons.append("path")
+        .attr("d", band(a, layout[ci+1][ri], x[ci] + NW, x[ci+1]))
+        .attr("fill", COLORS[a.row.type]).attr("opacity", OPACITY)
+        .attr("data-type", a.row.type);
+    });
+  }
+
+  // ---- nodes ----
+  const nodes = svg.append("g");
+  layout.forEach((col, ci) => col.forEach(seg => {
+    nodes.append("rect")
+      .attr("x", x[ci]).attr("y", seg.y).attr("width", NW)
+      .attr("height", Math.max(1.2, seg.h))
+      .attr("fill", COLORS[seg.row.type]).attr("data-type", seg.row.type);
+  }));
+
+  // ---- type labels beside the last column ----
+  // Thin bands (classroom, government) would collide, so labels are nudged apart and a
+  // leader line ties each nudged label back to the exact band it describes.
+  const leaders = svg.append("g").attr("fill", "none");
+  if (showTypeLabels) {
+    const lastCol = layout[LASTC], lastKey = COLUMNS[LASTC].key;
+    const LH = Math.max(13, fs(17));
+    const LEAD_X = x[LASTC] + NW + 3, LABEL_X = LEAD_X + Math.max(14, fs(20));
+    const ys = lastCol.map(seg => seg.y + seg.h/2 + LH*0.3);
+    for (let i = 1; i < ys.length; i++) ys[i] = Math.max(ys[i], ys[i-1] + LH);
+    for (let i = ys.length - 1; i >= 0; i--) ys[i] = Math.min(ys[i], H - BOT - (ys.length - 1 - i) * LH);
+    lastCol.forEach((seg, i) => {
+      const cy = seg.y + Math.max(1.2, seg.h)/2, ly = ys[i] - LH*0.3;
+      if (Math.abs(ly - cy) > 2 || seg.h < 6) {          // nudged label, or a band too thin to find
+        leaders.append("path")
+          .attr("d", `M${LEAD_X} ${cy.toFixed(1)}H${(LEAD_X + 5).toFixed(1)}L${(LABEL_X - 4).toFixed(1)} ${ly.toFixed(1)}`)
+          .attr("stroke", COLORS[seg.row.type]).attr("stroke-width", 1).attr("opacity", 0.8)
+          .attr("data-type", seg.row.type);
+      }
+      const t = svg.append("text")
+        .attr("x", LABEL_X).attr("y", ys[i])
+        .attr("text-anchor", "start").attr("font-size", fs(12.5))
+        .attr("data-type", seg.row.type);
+      t.append("tspan").attr("font-weight", 700).attr("fill", "#0f172a").text(capitalise(seg.row.type));
+      t.append("tspan").attr("font-size", fs(11)).attr("fill", "#64748b")
+        .text("  " + fmtPct(seg.row[lastKey] / TOTALS[lastKey]));
+    });
+  }
+
+  // hover (ribbon, node, leader or label): lift this type's flow, mute the rest
+  svg.selectAll("[data-type]")
+    .style("cursor", "pointer")
+    .on("mousemove", (evt) => showTooltip(evt, byType.get(evt.currentTarget.dataset.type)))
+    .on("mouseenter", (evt) => {
+      const t = evt.currentTarget.dataset.type;
+      ribbons.selectAll("path").attr("opacity", function(){ return this.dataset.type === t ? 0.72 : 0.18; });
+      nodes.selectAll("rect").attr("opacity", function(){ return this.dataset.type === t ? 1 : 0.35; });
+      leaders.selectAll("path").attr("stroke-width", function(){ return this.dataset.type === t ? 2 : 1; });
+    })
+    .on("mouseleave", () => {
+      ribbons.selectAll("path").attr("opacity", OPACITY);
+      nodes.selectAll("rect").attr("opacity", 1);
+      leaders.selectAll("path").attr("stroke-width", 1);
+      hideTooltip();
+    });
+
+  // ---- entry animation, first render only ----
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (firstRender && !reducedMotion) {
+    ribbons.selectAll("path").attr("opacity", 0)
+      .transition().duration(850).ease(d3.easeCubicOut).attr("opacity", OPACITY);
+    nodes.selectAll("rect").attr("opacity", 0)
+      .transition().duration(600).ease(d3.easeCubicOut).attr("opacity", 1);
+    svg.selectAll("text").attr("opacity", 0)
+      .transition().delay(100).duration(700).attr("opacity", 1);
+    leaders.selectAll("path").attr("opacity", 0)
+      .transition().delay(100).duration(700).attr("opacity", 0.8);
+  }
+  firstRender = false;
+}
+
+try { render(); } catch (err) {
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;left:8px;top:8px;background:#fee;border:1px solid #de2d26;color:#7f1d1d;padding:6px 8px;font-size:12px;border-radius:4px";
+  box.textContent = "Chart failed to render: " + err.message;
+  document.body.append(box);
+}
+
+let resizeTimer = null;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); });
+if (typeof ResizeObserver !== "undefined")
+  new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 220); }).observe(vizContainer);
+</script></body></html>

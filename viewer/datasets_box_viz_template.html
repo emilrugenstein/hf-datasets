@@ -85,8 +85,9 @@ const PANELS = [
   { key: "dlat", title: "Total downloads", sub: "all-time, per dataset", noun: "download" },
   { key: "lk",   title: "Likes",           sub: "per dataset",           noun: "like" },
 ];
+const PANEL_SIZE = { key: "size", title: "Dataset size", sub: "repository size in bytes, per dataset" };
 const VIEWS = [["box", "Box plots"], ["share", "Quantile shares"],
-               ["ridge", "Ridgeline · datasets"], ["ridgew", "Volume by percentile"]];
+               ["ridge", "Ridgeline · datasets"], ["ridgew", "Volume by percentile"], ["size", "Dataset size"]];
 const SOURCE_NAME = "Hugging Face hub weekly snapshots (hfmlsoc)";
 const SOURCE_HREF = "https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots";
 /* DATA: {snapshot, org_types[t], n[t], n_orgs[t], metrics:{dlat|lk:{share,p5..p99,max,
@@ -102,9 +103,9 @@ document.getElementById("source-text").innerHTML =
   'Source: <a href="' + SOURCE_HREF + '" target="_blank" rel="noopener">' + SOURCE_NAME + '</a>'
   + ' · snapshot of ' + DATA.snapshot;
 
-/* ---- state (deep-linkable: #box / #share / #ridge / #ridgew / #ridgew10) ---- */
+/* ---- state (deep-linkable: #box / #share / #ridge / #ridgew / #ridgew10 / #size) ---- */
 const HASH = location.hash.slice(1);
-let currentView = ["box", "share", "ridge", "ridgew"].includes(HASH) ? HASH : HASH === "ridgew10" ? "ridgew" : "box";
+let currentView = ["box", "share", "ridge", "ridgew", "size"].includes(HASH) ? HASH : HASH === "ridgew10" ? "ridgew" : "box";
 let rankZoom = HASH === "ridgew10";                    // Volume-by-percentile only: zoom into the top 10%
 let firstRender = true;
 const tooltip = document.getElementById("tooltip");
@@ -118,6 +119,12 @@ function fmtTick(v){
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
 function fmtPct(x){ const p = x*100; return (p >= 99.5 ? Math.round(p) : p >= 10 ? Math.round(p) : +p.toFixed(1)) + "%"; }
+function fmtBytes(v){
+  if (v == null) return "–";
+  for (const [div, suf] of [[1e12," TB"],[1e9," GB"],[1e6," MB"],[1e3," KB"]])
+    if (v >= div) { const x = v/div; return (x >= 10 ? Math.round(x) : +x.toFixed(1)) + suf; }
+  return Math.round(v) + " B";
+}
 /* decade gridlines; 1-2-5 steps when the domain spans few decades */
 function logTicks(lo, hi){
   const e0 = Math.floor(Math.log10(lo)), e1 = Math.ceil(Math.log10(hi));
@@ -209,9 +216,12 @@ function setCaption(){
   } else if (currentView === "ridge"){
     cap.textContent = "Density of the type's datasets with ≥1 download / like over a log scale · "
       + "curves normalised to equal peak height · % right of a curve = share of the type's datasets with ≥1.";
-  } else {
+  } else if (currentView === "ridgew"){
     cap.textContent = "Contribution to the type's total downloads / likes by account rank (an account = all its datasets combined) — "
       + "best accounts right · height: contribution on a log scale (tallest peak to floor spans ×10,000) · one scale per panel.";
+  } else {
+    cap.textContent = "Density of the type's datasets by repository size over a log scale · curves normalised to equal "
+      + "peak height · axis spans the hub's 0.1th–99.9th size percentiles; datasets without size information (~0.1%) excluded.";
   }
 }
 
@@ -380,18 +390,22 @@ function drawSharePanel(svg, spec, px, pw, py, ph){
    >=1-share labels are count-based, so hidden there. */
 const RANK_DECADES = 4;
 function drawRidgePanel(svg, spec, px, pw, py, ph, densKey, showShares){
-  const TYPES = DATA.org_types, M = DATA.metrics[spec.key], D = M[densKey];
-  const rank = densKey.startsWith("densr");
-  const noteShares = showShares && M.share.some(s => s < 0.995);
+  const TYPES = DATA.org_types;
+  const size = densKey === "size", rank = densKey.startsWith("densr");
+  const M = size ? null : DATA.metrics[spec.key];
+  const D = size ? DATA.size : M[densKey];
+  const shares = size ? D.share : M.share;
+  const noteShares = showShares && shares.some(s => s < 0.995);
   const ML = 82, MR = noteShares ? 46 : 10, MT = 40, MB = 22;
   const iw = pw - ML - MR, ih = ph - MT - MB;
   const OVER = 1.7;                                     // ridges may overlap into the row above
   const rowH = ih / (TYPES.length + OVER - 1);          // headroom so the top ridge stays under the title
   const ridgeH = rowH * OVER;
+  const d0 = size ? D.lo : 0;                           // size grid starts at the pooled 0.1th percentile
   const d1 = rank ? D.w : D.hi;                         // rank: top-fraction 0..w, best (0) on the right
-  const X = d3.scaleLinear().domain([0, d1]).range(rank ? [px + ML + iw, px + ML] : [px + ML, px + ML + iw]);
+  const X = d3.scaleLinear().domain([d0, d1]).range(rank ? [px + ML + iw, px + ML] : [px + ML, px + ML + iw]);
   const bins = D.d[0].length;
-  const bx = k => X((k + 0.5) * d1 / bins);             // bin centres
+  const bx = k => X(d0 + (k + 0.5) * (d1 - d0) / bins); // bin centres
   const hgt = rank                                      // log height for rank shares, linear otherwise
     ? d => d > 0 ? Math.max(0, 1 + Math.log10(d) / RANK_DECADES) : 0
     : d => d;
@@ -410,10 +424,11 @@ function drawRidgePanel(svg, spec, px, pw, py, ph, densKey, showShares){
         .attr("text-anchor", f === d1 ? "start" : f === 0 ? "end" : "middle").text(label);
     }
   } else {
-    const step = D.hi >= 7 ? 2 : 1;                     // sparser decades on very wide domains
-    for (let e = 0; e <= Math.floor(D.hi); e += step){
+    const step = d1 - d0 >= 7 ? 2 : 1;                  // sparser decades on very wide domains
+    for (let e = Math.ceil(d0); e <= Math.floor(d1); e += step){
       grid.append("line").attr("x1", X(e)).attr("x2", X(e)).attr("y1", py + MT).attr("y2", py + MT + ih);
-      grid.append("text").attr("x", X(e)).attr("y", py + MT + ih + 14).attr("text-anchor", "middle").text(fmtTick(Math.pow(10, e)));
+      grid.append("text").attr("x", X(e)).attr("y", py + MT + ih + 14).attr("text-anchor", "middle")
+        .text(size ? fmtBytes(Math.pow(10, e)) : fmtTick(Math.pow(10, e)));
     }
   }
 
@@ -430,9 +445,20 @@ function drawRidgePanel(svg, spec, px, pw, py, ph, densKey, showShares){
       .attr("font-size", 11).attr("font-weight", 600).attr("fill", MUTED).text(t);
     if (noteShares)
       g.append("text").attr("x", px + ML + iw + 6).attr("y", base - 3)
-        .attr("font-size", 10.5).attr("font-weight", 600).attr("fill", MUTED).text(fmtPct(M.share[i]));
+        .attr("font-size", 10.5).attr("font-weight", 600).attr("fill", MUTED).text(fmtPct(shares[i]));
 
-    const rows = rank
+    const rows = size
+      ? [{ name: "datasets", value: fmtTick(DATA.n[i]) },
+         { name: "with size info", value: fmtPct(D.share[i]) },
+         { name: "maximum", value: fmtBytes(D.max[i]), sep: true },
+         { name: "99th percentile", value: fmtBytes(D.p99[i]) },
+         { name: "95th percentile", value: fmtBytes(D.p95[i]) },
+         { name: "75th percentile", value: fmtBytes(D.q3[i]) },
+         { name: "median", value: fmtBytes(D.med[i]) },
+         { name: "25th percentile", value: fmtBytes(D.q1[i]) },
+         { name: "5th percentile", value: fmtBytes(D.p5[i]) },
+         { name: "mean", value: fmtBytes(D.mean[i]) }]
+      : rank
       ? [{ name: "accounts", value: fmtTick(DATA.n_orgs[i]) },
          { name: "datasets", value: fmtTick(DATA.n[i]) },
          { name: "type total " + spec.noun + "s", value: fmtTick(M.total[i]) },
@@ -455,6 +481,7 @@ const DRAW = {
   box: drawBoxPanel, share: drawSharePanel,
   ridge:  (svg, spec, px, pw, py, ph) => drawRidgePanel(svg, spec, px, pw, py, ph, "dens",  true),
   ridgew: (svg, spec, px, pw, py, ph) => drawRidgePanel(svg, spec, px, pw, py, ph, rankZoom ? "densrz" : "densr", false),
+  size:   (svg, spec, px, pw, py, ph) => drawRidgePanel(svg, spec, px, pw, py, ph, "size", true),
 };
 
 function draw(){
@@ -467,9 +494,12 @@ function draw(){
   const svg = d3.select("#viz").append("svg")
     .attr("viewBox", `0 0 ${cw} ${H}`).attr("width", cw).attr("height", H);
 
-  // the two metric panels sit side by side; stacked only when the frame is too narrow
+  // the two metric panels sit side by side; stacked only when the frame is too narrow.
+  // the size view is metric-independent, so it gets one full-width panel.
   const sideBySide = cw >= 640, GAP = 18;
-  const panels = sideBySide
+  const panels = currentView === "size"
+    ? [[PANEL_SIZE, 0, cw, 0, H]]
+    : sideBySide
     ? PANELS.map((p, i) => [p, i * ((cw - GAP) / 2 + GAP), (cw - GAP) / 2, 0, H])
     : PANELS.map((p, i) => [p, 0, cw, i * H / 2, H / 2]);
   const groups = panels.map(([p, px, pw, py, ph]) => DRAW[currentView](svg, p, px, pw, py, ph));

@@ -19,6 +19,9 @@ Latest weekly snapshot only, reusing the loaders from `hf_org_trends_build_viewe
            x, best accounts right); curve = share of the type's total volume
            contributed there, on a log height scale. One shared scale per panel
            (higher = more of the type's volume). A pill zooms into the top 10%.
+  size   — single-panel ridgeline of the log10 density of repo size in bytes
+           (`mainSize`, ~99.9% coverage), per type, peak-normalised, grid capped
+           at the pooled 0.1th–99.9th percentiles.
 
 Org types are ordered once, by median all-time downloads, so all views compare.
 
@@ -96,6 +99,34 @@ def densities(df: pl.DataFrame, col: str, types: list[str]) -> dict:
         d = np.convolve(h.astype(float), kernel, mode="same")
         out.append([round(float(v), 3) for v in d / d.max()])
     return {"hi": round(hi, 3), "d": out}
+
+
+def size_densities(df: pl.DataFrame, types: list[str]) -> dict:
+    """Per org type: smoothed histogram of log10(repo size in bytes) over datasets
+    with a known positive `mainSize` (~99.9% coverage), on a pooled 0.1th–99.9th
+    percentile grid, peak-normalised. Ships per-type coverage and byte quantiles
+    for the axis labels / tooltip."""
+    sized = df.filter(pl.col("mainSize") > 0)
+    logv = sized.select("org_type", pl.col("mainSize").log(10).alias("x"))
+    lo, hi = float(logv["x"].quantile(0.001)), float(logv["x"].quantile(0.999))
+    edges = np.linspace(lo, hi, DENS_BINS + 1)
+    kernel = _kernel(DENS_SIGMA / ((hi - lo) / DENS_BINS))
+    dens = []
+    for t in types:
+        x = logv.filter(pl.col("org_type") == t)["x"].to_numpy()
+        h, _ = np.histogram(x[(x >= lo) & (x <= hi)], bins=edges)
+        d = np.convolve(h.astype(float), kernel, mode="same")
+        dens.append([round(float(v), 3) for v in d / d.max()])
+    cover = {r["org_type"]: r["c"] for r in
+             df.group_by("org_type").agg((pl.col("mainSize") > 0).mean().alias("c")).iter_rows(named=True)}
+    aggs = [pl.col("mainSize").quantile(q).alias(k) for k, q in QUANTS]
+    aggs += [pl.col("mainSize").mean().alias("mean"), pl.col("mainSize").max().alias("max")]
+    qs = {r["org_type"]: r for r in sized.group_by("org_type").agg(aggs).iter_rows(named=True)}
+    return {
+        "lo": round(lo, 3), "hi": round(hi, 3), "d": dens,
+        "share": [round(cover[t], 4) for t in types],
+        **{k: [int(qs[t][k]) for t in types] for k in [k for k, _ in QUANTS] + ["mean", "max"]},
+    }
 
 
 def rank_densities(by_author: pl.DataFrame, types: list[str], width: float = 1.0) -> dict:
@@ -184,6 +215,7 @@ def main() -> int:
         "n": [stats["dlat"][t]["n"] for t in types],
         "n_orgs": [n_orgs[t] for t in types],
         "metrics": metrics,
+        "size": size_densities(df, types),
     }
 
     template = TEMPLATE.read_text(encoding="utf-8")

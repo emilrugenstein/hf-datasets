@@ -7,10 +7,12 @@ to the prior week) are smoothed at build time: the first fresh week's increment
 is spread evenly across the frozen run plus that week (linear interpolation),
 so the cumulative curves show no flat-then-jump artefact.
 
-The JSON payload replaces /*__DATA__*/ in `viewer/org_drivers_viz_template.html`
-and is written to `viewer/hf_org_drivers_viz.html` — one self-contained file in
-the AI World house style, ready to host at viz.aiworld.eu
-(e.g. aiworld/Story/<viz-slug>/viz.html).
+The published file is `viewer/final-aiw-viz/dataset_downloads_by_org_type.html`,
+one self-contained file in the AI World house style, ready to host at
+viz.aiworld.eu (e.g. aiworld/Story/<viz-slug>/viz.html). The JSON payload
+replaces /*__DATA__*/ in the template; since the template file was retired, a
+rebuild recovers it from the published viz by swapping the embedded DATA back
+to the placeholder.
 
 Usage:
   python hf_org_drivers_build_viz.py             # full build
@@ -23,6 +25,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -32,7 +35,18 @@ import polars as pl
 import hf_org_trends_build_viewer as base
 
 TEMPLATE = Path("viewer/org_drivers_viz_template.html")
-OUT_HTML = Path("viewer/hf_org_drivers_viz.html")
+OUT_HTML = Path("viewer/final-aiw-viz/dataset_downloads_by_org_type.html")
+
+
+def load_template() -> str:
+    """Template text, recovered from the published viz when the file is absent."""
+    if TEMPLATE.exists():
+        return TEMPLATE.read_text(encoding="utf-8")
+    html = OUT_HTML.read_text(encoding="utf-8")
+    template, n = re.subn(r"const DATA = \{.*?\};", "const DATA = /*__DATA__*/;", html, count=1, flags=re.S)
+    if n != 1:
+        raise RuntimeError(f"neither {TEMPLATE} nor a recoverable DATA block in {OUT_HTML}")
+    return template
 
 log = logging.getLogger("hf_org_drivers_build_viz")
 
@@ -116,7 +130,7 @@ def main() -> int:
         "dlat": dlat,
         "lk": lk,
     }
-    template = TEMPLATE.read_text(encoding="utf-8")
+    template = load_template()
     html = template.replace("/*__DATA__*/", json.dumps(payload, separators=(",", ":")), 1)
     tmp = args.out.with_suffix(".html.tmp")
     tmp.write_text(html, encoding="utf-8")

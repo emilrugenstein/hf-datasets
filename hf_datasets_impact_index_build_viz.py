@@ -23,10 +23,10 @@ folding nulls into "individual" would make it a residual bucket for every
 unclassifiable account). The top-1,000 scope is the 1,000 most-downloaded
 ORG-OWNED datasets, matching viewer/final-aiw-viz/dataset_size_by_org_type.html.
 
-Model adoption (`n_models_using`) is carried from the 2026-07-15 model->dataset
-index in alex-repo/, the only week it was computed; it covers 98.7% of the
-2026-07-22 dataset ids and adoption moves slowly, so the one-week carry-forward
-is noted in the viz footnote rather than corrected.
+Model adoption comes from the models snapshot of the SAME week, built by
+hf_models_dataset_usage.py. It previously had to be carried forward from
+alex-repo's 2026-07-15 index; recomputing on 2026-07-22 moved no index by more
+than 0.01x, and the two agree on 98.5% of datasets exactly (r = 0.9999).
 
 Writes the DATA block into viewer/final-aiw-viz/dataset_impact_index_by_org_type.html
 between the __DATA_START__/__DATA_END__ sentinels, leaving the file self-contained.
@@ -44,7 +44,7 @@ import pandas as pd
 
 SNAPSHOT = "2026-07-22"
 SNAP = Path(f"data/hf_datasets_historic/hf_datasets_min_{SNAPSHOT}.parquet")
-USAGE = Path("alex-repo/datasets_with_model_usage.parquet")
+USAGE = Path(f"data/hf_models_dataset_usage/dataset_model_usage_{SNAPSHOT}.parquet")
 OUT = Path("viewer/final-aiw-viz/dataset_impact_index_by_org_type.html")
 
 TOP_N = 1000
@@ -55,8 +55,9 @@ TYPES = ["company", "university", "community", "non-profit", "classroom", "gover
 def load() -> pd.DataFrame:
     """Snapshot restricted to org-owned datasets, with model adoption joined on."""
     df = pd.read_parquet(SNAP, columns=["id", "author", "likes", "downloadsAllTime", "org_type"])
-    usage = pd.read_parquet(USAGE, columns=["id", "n_models_using"])
+    usage = pd.read_parquet(USAGE).rename(columns={"dataset_id": "id", "n_models": "n_models_using"})
     df = df.merge(usage, on="id", how="left")
+    # left join: a dataset no model declares simply has no row in the index
     df["n_models_using"] = df["n_models_using"].fillna(0)
     return df[df["org_type"].notna()]
 

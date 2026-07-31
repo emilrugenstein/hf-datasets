@@ -9,10 +9,13 @@
   .viz-grid { display:grid; height:100vh; box-sizing:border-box; padding-bottom:clamp(8px,2vh,18px);
     grid-template-rows:16fr 1fr 1fr; grid-template-columns:1fr 1fr; }
   #container1 { grid-column:1 / -1; } #viz { width:100%; height:100%; }
-  #container5 { grid-column:1 / -1; display:flex; align-items:center; justify-content:center; padding:0 20px; }
-  #container2 { grid-column:1 / -1; display:flex; align-items:center; justify-content:center; padding:0 20px; }
+  /* control + legend rows: box-sizing so the vertical breathing room does not grow the grid */
+  #container5 { grid-column:1 / -1; display:flex; align-items:center; justify-content:center;
+    box-sizing:border-box; padding:clamp(4px,0.9vh,10px) 20px; }
+  #container2 { grid-column:1 / -1; display:flex; align-items:center; justify-content:center;
+    box-sizing:border-box; padding:clamp(4px,0.9vh,10px) 20px; }
   #legend { display:flex; align-items:center; justify-content:center; flex-wrap:wrap;
-    gap:clamp(6px,1.4vw,20px); font-size:clamp(8px,1.35vw,13px); color:#475569; }
+    gap:clamp(4px,0.8vh,9px) clamp(6px,1.4vw,20px); font-size:clamp(8px,1.35vw,13px); color:#475569; }
   #legend .lg { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
   #container3 { font-size:clamp(5px,1.6vw,16px); display:flex; align-items:center; justify-content:flex-start;
     padding:0 20px; overflow:hidden; min-width:0; }
@@ -65,55 +68,61 @@ const TYPE_LABEL = { company:"Company", university:"University", "non-profit":"N
 // Fixed display order (by the all-datasets downloads index) so the two scopes stay comparable.
 const TYPE_ORDER = ["company", "university", "community", "non-profit", "classroom", "government"];
 
+// `exclude`: types with too few datasets in that scope to index at all. Government
+// and classroom fall to n=1 and n=4 inside the top 1,000, so they are dropped there
+// rather than drawn as if they carried the same weight as the other four.
+//
+// Each scope declares its own y top. Bars run from zero on a linear axis, read
+// against the grey dashed parity line at 1x. The two scopes are on different
+// scales because they cover very different ranges: across all datasets the
+// indices span 0.11x-2.22x, inside the top 1,000 only 0.78x-1.23x. `axisNote`
+// and `excludeNote` are optional and join the legend text when present.
 const SCOPES = [                                      // segmented switch, in display order
-  { key:"all", btn:"All datasets", label:"all datasets" },
-  { key:"top", btn:"Top 1,000 by downloads", label:"the 1,000 most-downloaded datasets" },
+  { key:"all", btn:"All datasets", label:"all datasets", exclude:[],
+    domain:[0, 2.4], ticks:[0, 0.5, 1, 1.5, 2],
+    axisNote:"types differ by up to 20×" },
+  { key:"top", btn:"Top 1,000 by downloads", label:"the 1,000 most-downloaded datasets",
+    exclude:["government", "classroom"], excludeNote:"government and classroom omitted (n = 1 and n = 4)",
+    domain:[0, 1.35], ticks:[0, 0.5, 1, 1.25] },
 ];
-// ?scope=top opens on the top-1,000 view, so a story can embed either state directly.
+const DEFAULT_SCOPE = "top";
+// ?scope=all opens on the all-datasets view, so a story can embed either state directly.
 const URL_SCOPE = new URLSearchParams(location.search).get("scope");
-let currentScope = SCOPES.some(s => s.key === URL_SCOPE) ? URL_SCOPE : "all";
+let currentScope = SCOPES.some(s => s.key === URL_SCOPE) ? URL_SCOPE : DEFAULT_SCOPE;
 
-// One row per metric. `share` metrics are (outcome share / dataset share); `rate`
-// metrics are (type value / scope-wide value) -- the same normalisation applied to
-// a per-dataset quantity, so both are read against the same 1x parity line.
+// One panel per metric, left to right; the label sits under its panel. Each index is
+// (the type's share of the outcome / its share of datasets), so all three read against
+// the same 1x parity line.
 const METRICS = [
-  { key:"dl",  label:"All-time downloads", kind:"share", raw:"downloads",
-    desc:"share of downloads ÷ share of datasets" },
-  { key:"lk",  label:"Likes",              kind:"share", raw:"likes",
-    desc:"share of likes ÷ share of datasets" },
-  { key:"ad",  label:"Model adoption",     kind:"share", raw:"adoption",
-    desc:"share of models declaring a dataset as training data ÷ share of datasets" },
-  { key:"mdl", label:"Median downloads",   kind:"rate",  raw:"medianDl",
-    desc:"type median downloads ÷ scope-wide median" },
-  { key:"ax",  label:"arXiv-link rate",    kind:"rate",  raw:"arxivRate",
-    desc:"type share of datasets citing an arXiv paper ÷ scope-wide share" },
+  { key:"dl", label:"Downloads index",       desc:"share of downloads ÷ share of datasets" },
+  { key:"lk", label:"Likes index",           desc:"share of likes ÷ share of datasets" },
+  { key:"ad", label:"Model-adoption index",  desc:"share of models declaring a dataset as training data ÷ share of datasets" },
 ];
 
-const X_DOMAIN = [1/16, 4];                           // log ratio, fixed so the two scopes stay comparable
-const X_TICKS = [0.125, 0.25, 0.5, 1, 2, 4];
-const PARITY = 1;                                     // bars diverge from here
-const THIN_N = 10;                                    // below this the bar is drawn dashed + flagged
+const PARITY = 1;                                     // bars grow from here, up or down
+const PARITY_COLOR = "#B4B4B4";                       // light grey, so it reads behind the value labels
+const PANEL_GAP = 0.10;                               // share of a panel's width left between panels
 const SNAPSHOT = "22 July 2026";
 const SOURCE_NAME = "Hugging Face (" + SNAPSHOT + ")";
 const SOURCE_HREF = "https://huggingface.co/datasets";
 
-// One object per (organisation type x scope). dl/lk/ad/mdl/ax are the indices;
+// One object per (organisation type x scope). dl/lk/ad are the indices;
 // n = datasets of that type in the scope, pop = all its datasets in the snapshot;
 // the remaining fields are the raw values behind each index, for the tooltip.
 /*__DATA_START__*/
 const DATA = [
-  { type:"company", scope:"all", n:29198, pop:29198, dl:1.7750, lk:2.2241, ad:1.7676, mdl:1.1971, ax:1.0883, downloads:510999328, likes:109137, adoption:32238, medianDl:334, arxivRate:0.0904 },
-  { type:"university", scope:"all", n:23071, pop:23071, dl:1.1487, lk:1.1296, ad:1.0807, mdl:1.1075, ax:1.7148, downloads:261309912, likes:43797, adoption:15574, medianDl:309, arxivRate:0.1425 },
-  { type:"community", scope:"all", n:59347, pop:59347, dl:0.8682, lk:0.7372, ad:0.8476, mdl:0.7563, ax:0.8143, downloads:508001732, likes:73531, adoption:31422, medianDl:211, arxivRate:0.0677 },
-  { type:"non-profit", scope:"all", n:54542, pop:54542, dl:0.7425, lk:0.6457, ad:0.7949, mdl:0.8961, ax:0.9200, downloads:399285826, likes:59189, adoption:27082, medianDl:250, arxivRate:0.0764 },
-  { type:"classroom", scope:"all", n:4039, pop:4039, dl:0.1157, lk:0.1734, ad:0.1356, mdl:0.9211, ax:0.1967, downloads:4606379, likes:1177, adoption:342, medianDl:257, arxivRate:0.0163 },
-  { type:"government", scope:"all", n:693, pop:693, dl:0.1073, lk:0.3125, ad:0.2056, mdl:0.6380, ax:0.3647, downloads:733279, likes:364, adoption:89, medianDl:178, arxivRate:0.0303 },
-  { type:"company", scope:"top", n:274, pop:29198, dl:1.1717, lk:1.2147, ad:1.2255, mdl:0.9368, ax:0.9580, downloads:432485396, likes:32512, adoption:13170, medianDl:344373, arxivRate:0.4599 },
-  { type:"university", scope:"top", n:186, pop:23071, dl:0.8062, lk:0.7839, ad:0.7964, mdl:0.8852, ax:1.0977, downloads:202003875, likes:14243, adoption:5810, medianDl:325403, arxivRate:0.5269 },
-  { type:"community", scope:"top", n:263, pop:59347, dl:1.1436, lk:1.1281, ad:0.9693, mdl:1.0964, ax:0.9268, downloads:405172682, likes:28984, adoption:9998, medianDl:403040, arxivRate:0.4449 },
-  { type:"non-profit", scope:"top", n:272, pop:54542, dl:0.8366, lk:0.8240, ad:0.9600, mdl:1.1203, ax:1.0646, downloads:306543320, likes:21894, adoption:10241, medianDl:411836, arxivRate:0.5110 },
-  { type:"classroom", scope:"top", n:4, pop:4039, dl:0.1324, lk:0.0077, ad:0.0064, mdl:0.4561, ax:0.0000, downloads:713402, likes:3, adoption:1, medianDl:167668, arxivRate:0.0000 },
-  { type:"government", scope:"top", n:1, pop:693, dl:0.1511, lk:0.5323, ad:0.0000, mdl:0.5536, ax:0.0000, downloads:203526, likes:52, adoption:0, medianDl:203526, arxivRate:0.0000 },
+  { type:"company", scope:"all", n:29198, pop:29198, dl:1.7750, lk:2.2241, ad:1.7676, downloads:510999328, likes:109137, adoption:32238 },
+  { type:"university", scope:"all", n:23071, pop:23071, dl:1.1487, lk:1.1296, ad:1.0807, downloads:261309912, likes:43797, adoption:15574 },
+  { type:"community", scope:"all", n:59347, pop:59347, dl:0.8682, lk:0.7372, ad:0.8476, downloads:508001732, likes:73531, adoption:31422 },
+  { type:"non-profit", scope:"all", n:54542, pop:54542, dl:0.7425, lk:0.6457, ad:0.7949, downloads:399285826, likes:59189, adoption:27082 },
+  { type:"classroom", scope:"all", n:4039, pop:4039, dl:0.1157, lk:0.1734, ad:0.1356, downloads:4606379, likes:1177, adoption:342 },
+  { type:"government", scope:"all", n:693, pop:693, dl:0.1073, lk:0.3125, ad:0.2056, downloads:733279, likes:364, adoption:89 },
+  { type:"company", scope:"top", n:274, pop:29198, dl:1.1717, lk:1.2147, ad:1.2255, downloads:432485396, likes:32512, adoption:13170 },
+  { type:"university", scope:"top", n:186, pop:23071, dl:0.8062, lk:0.7839, ad:0.7964, downloads:202003875, likes:14243, adoption:5810 },
+  { type:"community", scope:"top", n:263, pop:59347, dl:1.1436, lk:1.1281, ad:0.9693, downloads:405172682, likes:28984, adoption:9998 },
+  { type:"non-profit", scope:"top", n:272, pop:54542, dl:0.8366, lk:0.8240, ad:0.9600, downloads:306543320, likes:21894, adoption:10241 },
+  { type:"classroom", scope:"top", n:4, pop:4039, dl:0.1324, lk:0.0077, ad:0.0064, downloads:713402, likes:3, adoption:1 },
+  { type:"government", scope:"top", n:1, pop:693, dl:0.1511, lk:0.5323, ad:0.0000, downloads:203526, likes:52, adoption:0 },
 ];
 /*__DATA_END__*/
 
@@ -146,9 +155,8 @@ document.getElementById("source-text").innerHTML =
 // ---- helpers ----
 const fmtInt = d3.format(",");
 const fmtBig = d3.format(".3~s");                      // 494M downloads
-const fmtIdx = v => (v >= 10 ? d3.format(".0f")(v) : d3.format(".2f")(v)) + "×";
-function tickLabel(t){ return (t < 1 ? String(t) : d3.format(".0f")(t)) + "×"; }
-function fmtPct(v){ return (100*v < 1 ? (100*v).toFixed(2) : (100*v).toFixed(1)) + "%"; }
+const fmtIdx = v => d3.format(".2f")(v) + "×";
+const tickLabel = t => String(t) + "×";                // 0.5x / 1x / 1.25x, never rounded to "1x"
 
 const measure = (() => {                               // text width, for dynamic margins
   const ctx = document.createElement("canvas").getContext("2d");
@@ -159,20 +167,18 @@ const tooltip = d3.select("#tooltip");
 const vizContainer = document.getElementById("viz");
 let shouldAnimate = true;   // true on first render and on a scope switch, false on resize redraws
 
-// One drawable bar per (metric x type) for the active scope. An index of 0 (no
-// arXiv links, no adopting models) cannot sit on a log axis, so it is flagged and
-// pinned to the axis floor rather than dropped.
+const scopeDef = () => SCOPES.find(s => s.key === currentScope);
+const typesFor = scope => TYPE_ORDER.filter(t => !scope.exclude.includes(t));
+
+// One drawable bar per (metric x type) for the active scope.
 function barsFor(scope){
-  const byType = new Map(DATA.filter(d => d.scope === scope).map(d => [d.type, d]));
+  const byType = new Map(DATA.filter(d => d.scope === scope.key).map(d => [d.type, d]));
   const bars = [];
   for (const m of METRICS)
-    for (const t of TYPE_ORDER){
+    for (const t of typesFor(scope)){
       const row = byType.get(t);
       if (!row) continue;
-      const v = row[m.key];
-      bars.push({ metric:m, type:t, row, value:v, zero:!(v > 0),
-                  plot:Math.min(X_DOMAIN[1], Math.max(X_DOMAIN[0], v > 0 ? v : X_DOMAIN[0])),
-                  thin:row.n < THIN_N, fill:COLORS[t] });
+      bars.push({ metric:m, type:t, row, value:row[m.key], fill:COLORS[t] });
     }
   return bars;
 }
@@ -200,15 +206,16 @@ function updateScopeState(){
 }
 
 function buildLegend(){
-  const scope = SCOPES.find(s => s.key === currentScope);
+  const scope = scopeDef();
   const swatch = t =>
     '<svg width="14" height="14"><rect width="14" height="14" rx="2" fill="'+COLORS[t]+'"></rect></svg>';
-  const anyThin = barsFor(currentScope).some(b => b.thin);
+  // colour swatches first, then every note joined into one item. The active scope is
+  // not named here: the segmented button directly above already states it.
+  const notes = ["1× = proportional to share of datasets", "individuals excluded",
+                 scope.axisNote, scope.excludeNote].filter(Boolean);
   document.getElementById("legend").innerHTML =
-    TYPE_ORDER.map(t => '<span class="lg">' + swatch(t) + TYPE_LABEL[t] + '</span>').join("")
-    + '<span class="lg">1× = proportional to share of datasets · individuals excluded · '
-    + scope.label + '</span>'
-    + (anyThin ? '<span class="lg">Dashed = n &lt; ' + THIN_N + ', not robust</span>' : '');
+    typesFor(scope).map(t => '<span class="lg">' + swatch(t) + TYPE_LABEL[t] + '</span>').join("")
+    + '<span class="lg">' + notes.join("; ") + '</span>';
 }
 
 function render(){
@@ -219,108 +226,100 @@ function render(){
   const animate = shouldAnimate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   shouldAnimate = false;
 
-  const bars = barsFor(currentScope);
-  const fs = Math.max(8, Math.min(13, W/68));                   // tick / value size
-  const fsName = Math.max(9, Math.min(15, W/54));               // metric names
-  const nameW = Math.max(...METRICS.map(m => measure(m.label, fsName, 700)));
-  const valW = Math.max(...bars.map(b => measure(fmtIdx(b.value), fs, 700)));
-  const M = { top: Math.round(fs*0.8), right: Math.round(valW + fs*1.2),
-              bottom: Math.round(fs*(compact ? 2.2 : 3.8)), left: Math.round(nameW + fs*1.4) };
+  const scope = scopeDef();
+  const types = typesFor(scope);
+  const bars = barsFor(scope);
+  const fs = Math.max(8, Math.min(13, W/78));                   // tick / value size
+  const fsTitle = Math.max(9, Math.min(15, W/72));              // panel titles
+  const ticks = scope.ticks;
+  const tickW = Math.max(...ticks.map(t => measure(tickLabel(t), fs, 600)));
+  // top: room for the value label above the tallest bar; bottom: the panel label
+  const M = { top: Math.round(fs*1.8), right: Math.round(fs*0.8),
+              bottom: Math.round(compact ? fs*0.8 : fsTitle*2.2), left: Math.round(tickW + fs*1.2) };
   const iw = Math.max(60, W - M.left - M.right), ih = Math.max(60, H - M.top - M.bottom);
 
   const svg = d3.select("#viz").append("svg").attr("width", W).attr("height", H);
   const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
 
-  const x = d3.scaleLog().domain(X_DOMAIN).range([0, iw]);
-  const yGroup = d3.scaleBand().domain(METRICS.map(m => m.key)).range([0, ih]).paddingInner(0.28);
-  const yBar = d3.scaleBand().domain(TYPE_ORDER).range([0, yGroup.bandwidth()]).padding(0.18);
-  const bh = Math.max(3, Math.min(yBar.bandwidth(), 22));
-  const barY = b => yGroup(b.metric.key) + yBar(b.type) + (yBar.bandwidth() - bh)/2;
+  // four equal panels across the inner width, separated by a fixed share of a panel
+  const panelW = iw / (METRICS.length + (METRICS.length - 1) * PANEL_GAP);
+  const panelX = i => i * panelW * (1 + PANEL_GAP);
+  const y = d3.scaleLinear().domain(scope.domain).range([ih, 0]);
+  const x = d3.scaleBand().domain(types).range([0, panelW]).padding(types.length > 4 ? 0.22 : 0.3);
+  const bw = x.bandwidth();
+  const y0 = y(0), y1 = y(PARITY);                             // bar baseline, parity line
 
-  // gridlines, one per tick; the 1x parity line is drawn separately and solid
-  g.append("g").selectAll("line").data(X_TICKS.filter(t => t !== PARITY)).join("line")
-    .attr("x1", d => x(d)).attr("x2", d => x(d)).attr("y1", 0).attr("y2", ih)
-    .attr("stroke", "#DBDBDB").attr("stroke-dasharray", "2,3").attr("stroke-width", 1);
-  g.append("g").selectAll("text").data(X_TICKS).join("text")
-    .attr("x", d => x(d)).attr("y", ih + fs*1.6).attr("text-anchor", "middle")
+  // y tick labels once, on the far left; gridlines repeat inside every panel
+  g.append("g").selectAll("text").data(ticks).join("text")
+    .attr("x", -fs*0.6).attr("y", d => y(d) + fs*0.35).attr("text-anchor", "end")
     .attr("font-size", fs).attr("font-weight", 600)
     .attr("fill", d => d === PARITY ? "#0f172a" : "#475569")
     .text(tickLabel);
-  if (!compact)
-    g.append("text").attr("x", iw/2).attr("y", ih + fs*3.3).attr("text-anchor", "middle")
-      .attr("font-size", fs).attr("font-weight", 700).attr("fill", "#0f172a")
-      .text("Outcome index: share of the outcome ÷ share of datasets (log scale)");
 
-  // separator between metric groups, so the five blocks read as small multiples
-  g.append("g").selectAll("line").data(METRICS.slice(1)).join("line")
-    .attr("x1", -M.left + fs*0.4).attr("x2", iw)
-    .attr("y1", m => yGroup(m.key) - yGroup.step()*yGroup.paddingInner()/2)
-    .attr("y2", m => yGroup(m.key) - yGroup.step()*yGroup.paddingInner()/2)
-    .attr("stroke", "#EDEDED").attr("stroke-width", 1);
+  METRICS.forEach((m, i) => {
+    const p = g.append("g").attr("transform", `translate(${panelX(i)},0)`);
 
-  // metric names on the left, centred on their group
-  g.append("g").selectAll("text").data(METRICS).join("text")
-    .attr("x", -fs*1.0).attr("y", m => yGroup(m.key) + yGroup.bandwidth()/2 + fsName*0.35)
-    .attr("text-anchor", "end").attr("font-size", fsName).attr("font-weight", 700).attr("fill", "#0f172a")
-    .text(m => m.label);
+    p.append("g").selectAll("line").data(ticks.filter(t => t !== PARITY)).join("line")
+      .attr("x1", 0).attr("x2", panelW).attr("y1", d => y(d)).attr("y2", d => y(d))
+      .attr("stroke", "#DBDBDB").attr("stroke-dasharray", "2,3").attr("stroke-width", 1);
 
-  const x1 = x(PARITY);
+    if (!compact)
+      p.append("text").attr("x", panelW/2).attr("y", ih + fsTitle*1.5).attr("text-anchor", "middle")
+        .attr("font-size", fsTitle).attr("font-weight", 700).attr("fill", "#0f172a")
+        .text(m.label);
+  });
+
   const barSel = g.append("g").selectAll("rect").data(bars).join("rect")
-    .attr("y", barY).attr("height", bh)
+    .attr("x", b => panelX(METRICS.indexOf(b.metric)) + x(b.type))
+    .attr("width", bw)
     .attr("fill", b => b.fill)
-    .attr("opacity", b => b.thin ? 0.45 : 1)
-    .attr("stroke", b => b.thin ? b.fill : "none")
-    .attr("stroke-width", b => b.thin ? 1.2 : 0)
-    .attr("stroke-dasharray", b => b.thin ? "4,3" : null)
-    .attr("x", animate ? x1 : b => Math.min(x1, x(b.plot)))
-    .attr("width", animate ? 0 : b => Math.max(1, Math.abs(x(b.plot) - x1)));
+    .attr("y", animate ? y0 : b => y(b.value))
+    .attr("height", animate ? 0 : b => Math.max(1, y0 - y(b.value)));
 
   if (SHOW_TOOLTIP){
     const rawLine = b => {
       const d = b.row;
-      if (b.metric.key === "ax")  return "arXiv-link rate: <b>" + fmtPct(d.arxivRate) + "</b>";
-      if (b.metric.key === "mdl") return "Median downloads: <b>" + fmtInt(d.medianDl) + "</b>";
-      if (b.metric.key === "ad")  return "Adopting models: <b>" + fmtInt(d.adoption) + "</b>";
-      if (b.metric.key === "lk")  return "Likes: <b>" + fmtBig(d.likes) + "</b>";
+      if (b.metric.key === "ad") return "Adopting models: <b>" + fmtInt(d.adoption) + "</b>";
+      if (b.metric.key === "lk") return "Likes: <b>" + fmtBig(d.likes) + "</b>";
       return "Downloads: <b>" + fmtBig(d.downloads) + "</b>";
     };
     barSel.on("mousemove", (evt, b) => {
-        const d = b.row, over = b.value > PARITY;
+        const d = b.row;
         tooltip.style("display", "block")
           .style("left", Math.min(evt.clientX + 12, window.innerWidth - 250) + "px")
           .style("top", (evt.clientY + 14) + "px")
-          .html('<span class="tt-title">' + TYPE_LABEL[b.type] + " – " + b.metric.label + '</span>'
+          .html('<span class="tt-title">' + TYPE_LABEL[b.type] + ": " + b.metric.label + '</span>'
             + "Index: <b>" + fmtIdx(b.value) + "</b> "
-            + (b.zero ? "" : (over ? "above" : "below") + " parity") + "<br>"
+            + (b.value > PARITY ? "above" : "below") + " parity<br>"
             + rawLine(b) + "<br>"
             + '<span>' + b.metric.desc + '</span><br>'
             + '<span>' + fmtInt(d.n) + " of " + fmtInt(d.pop) + " datasets"
-            + (currentScope === "top" ? " (" + (d.n/10).toFixed(1) + "% of the top 1,000)" : "")
-            + '</span>'
-            + (b.thin ? '<br><span>Fewer than ' + THIN_N + " datasets, not robust</span>" : "")
-            + (b.zero ? '<br><span>Exactly zero, pinned to the axis floor</span>' : ""));
+            + (currentScope === "top" ? ", " + (d.n/10).toFixed(1) + "% of the top 1,000" : "")
+            + '</span>');
       })
       .on("mouseleave", () => tooltip.style("display", "none"));
   }
 
-  // parity line last, so it sits on top of the bars
-  g.append("line").attr("x1", x1).attr("x2", x1).attr("y1", 0).attr("y2", ih)
-    .attr("stroke", "#111111").attr("stroke-width", 1.4);
+  // dotted 1x parity line per panel, drawn over the bars so the reference stays readable
+  METRICS.forEach((m, i) => {
+    g.append("line")
+      .attr("x1", panelX(i)).attr("x2", panelX(i) + panelW).attr("y1", y1).attr("y2", y1)
+      .attr("stroke", PARITY_COLOR).attr("stroke-width", 1.4).attr("stroke-dasharray", "4,3");
+  });
 
-  // index value at each bar's outer tip
+  // index value above each bar
   const vals = g.append("g").selectAll("text").data(bars).join("text")
-    .attr("x", b => x(b.plot) >= x1 ? Math.min(x(b.plot) + fs*0.4, iw + M.right - valW) : x(b.plot) - fs*0.4)
-    .attr("y", b => barY(b) + bh/2 + fs*0.36)
-    .attr("text-anchor", b => x(b.plot) >= x1 ? "start" : "end")
-    .attr("font-size", fs*0.92).attr("font-weight", 700)
-    .attr("fill", b => b.thin ? "#475569" : "#0f172a")
+    .attr("x", b => panelX(METRICS.indexOf(b.metric)) + x(b.type) + bw/2)
+    .attr("y", b => y(b.value) - fs*0.45)
+    .attr("text-anchor", "middle")
+    .attr("font-size", Math.min(fs*0.95, bw*0.42)).attr("font-weight", 700).attr("fill", "#0f172a")
     .attr("opacity", animate ? 0 : 1)
-    .text(b => b.zero ? "0" : fmtIdx(b.value));
+    .text(b => fmtIdx(b.value));
 
   if (animate){
     barSel.transition().duration(850).ease(d3.easeCubicOut)
-      .attr("x", b => Math.min(x1, x(b.plot)))
-      .attr("width", b => Math.max(1, Math.abs(x(b.plot) - x1)));
+      .attr("y", b => y(b.value))
+      .attr("height", b => Math.max(1, y0 - y(b.value)));
     vals.transition().delay(600).duration(300).attr("opacity", 1);
   }
   buildLegend();     // the legend names the active scope, so it follows every render

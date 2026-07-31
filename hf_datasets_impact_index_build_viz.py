@@ -6,10 +6,12 @@ and with a scope switch (all datasets / top 1,000 by downloads).
 
 Each metric is an INDEX: the type's share of an outcome divided by its share of
 datasets, so 1.0x means "exactly proportional to how many datasets it publishes".
-For per-dataset metrics (median downloads, arXiv-link rate) the equivalent
-normalisation is the type's value divided by the scope-wide value -- the same
-ratio. Alex's chart plotted both forms of the adoption metric as if they were
-two findings; they are algebraically identical, so only one appears here.
+Alex's chart plotted both forms of the adoption metric as if they were two
+findings; they are algebraically identical, so only one appears here.
+
+Three metrics are emitted: downloads, likes and model adoption. Government and
+classroom fall to n=1 and n=4 in the top-1,000 scope, far too few to index; the
+viz drops them from that scope rather than drawing them.
 
 Two scopes, one fixed x domain, so switching shows how much of any apparent
 "impact" difference is really an artefact of selecting on downloads: inside the
@@ -51,12 +53,11 @@ TYPES = ["company", "university", "community", "non-profit", "classroom", "gover
 
 
 def load() -> pd.DataFrame:
-    """Snapshot restricted to org-owned datasets, with adoption and arXiv flags."""
-    df = pd.read_parquet(SNAP, columns=["id", "author", "tags", "likes", "downloadsAllTime", "org_type"])
+    """Snapshot restricted to org-owned datasets, with model adoption joined on."""
+    df = pd.read_parquet(SNAP, columns=["id", "author", "likes", "downloadsAllTime", "org_type"])
     usage = pd.read_parquet(USAGE, columns=["id", "n_models_using"])
     df = df.merge(usage, on="id", how="left")
     df["n_models_using"] = df["n_models_using"].fillna(0)
-    df["arx"] = df["tags"].apply(lambda t: any(x.startswith("arxiv:") for x in t) if t is not None else False)
     return df[df["org_type"].notna()]
 
 
@@ -68,8 +69,6 @@ def indices(scope: pd.DataFrame, pop: pd.Series) -> list[dict]:
         "downloads": g["downloadsAllTime"].sum(),
         "likes": g["likes"].sum(),
         "adoption": g["n_models_using"].sum(),
-        "median_dl": g["downloadsAllTime"].median(),
-        "arxiv_rate": g["arx"].mean(),
     }).reindex(TYPES)
     share = agg["n"] / agg["n"].sum()
 
@@ -86,15 +85,10 @@ def indices(scope: pd.DataFrame, pop: pd.Series) -> list[dict]:
             "dl": a["downloads"] / agg["downloads"].sum() / share[t],
             "lk": a["likes"] / agg["likes"].sum() / share[t],
             "ad": a["adoption"] / agg["adoption"].sum() / share[t],
-            # per-dataset indices: type value / scope-wide value
-            "mdl": a["median_dl"] / scope["downloadsAllTime"].median(),
-            "ax": a["arxiv_rate"] / scope["arx"].mean(),
             # raw values, for the tooltip
             "downloads": int(a["downloads"]),
             "likes": int(a["likes"]),
             "adoption": int(a["adoption"]),
-            "medianDl": int(a["median_dl"]),
-            "arxivRate": a["arxiv_rate"],
         })
     return rows
 
@@ -105,11 +99,10 @@ def fmt(rows: list[dict]) -> str:
     for r in rows:
         out.append(
             '  { type:"%s", scope:"%s", n:%d, pop:%d, '
-            'dl:%.4f, lk:%.4f, ad:%.4f, mdl:%.4f, ax:%.4f, '
-            'downloads:%d, likes:%d, adoption:%d, medianDl:%d, arxivRate:%.4f },'
+            'dl:%.4f, lk:%.4f, ad:%.4f, '
+            'downloads:%d, likes:%d, adoption:%d },'
             % (r["type"], r["scope"], r["n"], r["pop"], r["dl"], r["lk"], r["ad"],
-               r["mdl"], r["ax"], r["downloads"], r["likes"], r["adoption"],
-               r["medianDl"], r["arxivRate"])
+               r["downloads"], r["likes"], r["adoption"])
         )
     return "\n".join(out)
 
@@ -136,7 +129,7 @@ def main() -> None:
     print(f"{len(df):,} org-owned datasets; wrote {len(rows)} rows to {OUT}")
     for r in rows:
         print(f"  {r['scope']:>3} {r['type']:<11} n={r['n']:>6}  dl={r['dl']:.2f}x  lk={r['lk']:.2f}x  "
-              f"ad={r['ad']:.2f}x  mdl={r['mdl']:.2f}x  ax={r['ax']:.2f}x")
+              f"ad={r['ad']:.2f}x")
 
 
 if __name__ == "__main__":

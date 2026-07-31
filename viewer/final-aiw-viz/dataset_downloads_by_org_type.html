@@ -81,6 +81,10 @@ const INK = "#0f172a", MUTED = "#475569";
 const METRIC_ORDER = ["dlat", "lk"];
 const METRIC_LABELS = { dlat: "Total downloads", lk: "Likes" };
 const ACCOUNT_OPTIONS = [["orgs", "Organisations only"], ["all", "Incl. individual accounts"]];
+// Government and classroom together stay under 1% of downloads and likes in every
+// week, so their bands are invisible in the stack; dropped and noted in the legend.
+const EXCLUDED_TYPES = ["government", "classroom"];
+const EXCLUDE_NOTE = "government and classroom omitted (together <1%)";
 const SOURCE_NAME = "Hugging Face (weekly snapshots)";
 const SOURCE_HREF = "https://huggingface.co/datasets/hfmlsoc/hub_weekly_snapshots";
 /* DATA: {dates[w], org_types[t], dlat[t][w], lk[t][w]}: sums per org type per week;
@@ -193,6 +197,9 @@ function buildLegend(bands){
     s.append(chip, b.name);
     lg.appendChild(s);
   }
+  const note = document.createElement("span");         // exclusion note, as in the impact-index viz
+  note.textContent = EXCLUDE_NOTE;
+  lg.appendChild(note);
 }
 
 /* ---- render: clears the SVG and rebuilds from a measured container ---- */
@@ -219,7 +226,8 @@ function draw(){
   const TYPES = DATA.org_types;
   const series = DATA[currentMetric];
   const LAST = DATA.dates.length - 1;
-  const kept = TYPES.map((t, i) => i).filter(i => includeIndividuals || TYPES[i] !== "individual");
+  const kept = TYPES.map((t, i) => i).filter(i =>
+    !EXCLUDED_TYPES.includes(TYPES[i]) && (includeIndividuals || TYPES[i] !== "individual"));
   kept.sort((a, b) => (series[b][LAST] || 0) - (series[a][LAST] || 0));   // largest at the bottom
   const bands = kept.map(i => ({ name: TYPES[i], color: COLORS[TYPES[i]], vals: series[i] }));
   buildLegend(bands);
